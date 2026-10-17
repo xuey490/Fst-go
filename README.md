@@ -1,5 +1,5 @@
 
-# FssAdmin (golang版)
+# FST-Go 
 
 **File Safe Transfer** — 文件安全传输。
 
