@@ -41,6 +41,7 @@ Current release form: **Windows desktop** (`fst.exe`) + **headless Linux relay**
 - [Relay groups and exit authorization](#relay-groups-and-exit-authorization)
 - [How a client connects to a relay](#how-a-client-connects-to-a-relay)
 - [Network proxy (optional)](#network-proxy-optional)
+- [Headless service mode (fst serve)](#headless-service-mode-fst-serve)
 - [Configuration and data directory](#configuration-and-data-directory)
 - [Development and testing](#development-and-testing)
 - [Status and limitations](#status-and-limitations)
@@ -189,6 +190,11 @@ Third-party libraries keep their own licenses. This repository's source is cover
 - SOCKS5 inbound: no administrator rights, no `wintun.dll`; listens on loopback by default
 - Linux desktop (verified on Ubuntu 24.04): GTK4 + WebKitGTK 6.0 runtime libraries; the TUN proxy needs root / `CAP_NET_ADMIN` and `/dev/net/tun`
 
+**Service mode (fst serve)**
+
+- Any modern browser (desktop / Android / iOS); the backend can share a machine with the desktop app
+- Binds `127.0.0.1:9797` by default; when exposed to the LAN, allow **TCP** on the chosen port
+
 **Relay**
 
 - Linux with a public IPv4 (the current deb is amd64)
@@ -215,6 +221,35 @@ wails3 build
 ```
 
 Artifacts: `bin/fst.exe` plus `bin/wintun.dll` copied from `build/windows/wintun/`. The frontend is embedded in the exe, so you do not need to ship `front/`.
+
+For the service mode, also build a **console-subsystem** binary (logs print straight to the terminal — recommended for command-line use):
+
+```powershell
+go build -o bin\fst-serve.exe .
+```
+
+### Running
+
+**Desktop `fst.exe`** (GUI subsystem):
+
+1. Double-click `bin\fst.exe`, or run `.\fst.exe` in a terminal (no arguments starts the GUI).
+2. Quit via the tray icon or the window close button.
+
+**Service mode `fst-serve.exe`** (console subsystem):
+
+```powershell
+cd bin
+.\fst-serve.exe serve                      # default http://127.0.0.1:9797, local only
+.\fst-serve.exe serve -addr 0.0.0.0:9797   # expose to the LAN (allow TCP)
+```
+
+1. On startup the terminal prints a banner: **access URL / access token (64 hex chars) / data directory**, followed by live logs.
+2. Open the URL in a browser and enter the token once to get the full desktop-equivalent UI (session cookie lasts 30 days).
+3. Stop: press **Ctrl+C** in the terminal (graceful shutdown); for background processes use `Stop-Process -Name fst-serve`.
+4. Forgot the token: search `token=` in the data directory's `fst.log`, or delete the `web_token` row in the SQLite `settings` table and restart to regenerate.
+5. Note: serve and the desktop app share the same data directory and port 8787 — **only one can run at a time**; to run both, isolate with `FST_DATA_DIR` / `FST_PORT` (see below).
+
+> `fst.exe serve` also starts the service (GUI subsystem, output via console attachment), but for terminal use `fst-serve.exe` is the most predictable.
 
 Development with hot reload (does not write `bin/`):
 
@@ -254,6 +289,15 @@ wails3 build
 ```
 
 Artifact: `bin/fst`.
+
+The service mode (headless, browser access) can additionally be built as a console binary, or run directly via `./bin/fst serve` on a machine with the dependencies installed:
+
+```bash
+go build -o bin/fst-serve .
+./bin/fst-serve serve          # default 127.0.0.1:9797, full UI in the browser
+```
+
+> Like the desktop build this requires the GTK development libraries; on a bare server, build elsewhere and copy the binary over (see the systemd example in the service-mode section below).
 
 - Ubuntu 22.04 lacks WebKitGTK 6.0; use the GTK3 stack instead: `sudo apt install -y libgtk-3-dev libwebkit2gtk-4.1-dev`, and build with `-tags gtk3`. Ubuntu 20.04 and older are not supported.
 - glibc compatibility: a binary built on one release only runs on that release or newer; if your targets include 22.04, build on 22.04.
@@ -453,6 +497,46 @@ SQLite uses `PRAGMA user_version` for versioned migrations (currently v6: `trans
 Full migration: quit FST-Go and copy the whole `%APPDATA%\FST\`. To add another machine, copy only the exe and let it generate a new identity.
 
 Environment variables: `FST_DATA_DIR`, `FST_PORT`.
+
+---
+
+## Headless service mode (fst serve)
+
+The same code and data run in the background without a GUI and serve the exact same interface over HTTP — open a browser on any device (Windows / Linux / macOS desktop, phone, tablet) and you get the full desktop experience.
+
+```bash
+fst serve                      # listens on 127.0.0.1:9797 (local only)
+fst serve -addr 0.0.0.0:9797   # expose to the LAN (a warning is logged; keep the token strong)
+```
+
+> Windows builds produce two executables: `fst.exe` (GUI subsystem — double-click for the desktop app; serve output is shown via console attachment) and `fst-serve.exe` (console subsystem, built with `go build -o bin\fst-serve.exe .`) — **the recommended way to run the service from a terminal**: cmd waits on it, logs and the startup banner (address, token, Ctrl+C hint) print directly to the terminal, and Ctrl+C shuts it down gracefully.
+
+- The **first start** generates a random **access token** and prints it in the log (also stored as `settings.web_token` in the data directory). Enter it once in the browser; the session cookie lasts 30 days.
+- The interface is identical to the desktop app: device discovery, chat (images / files / recall / offline queue), group chat, transfer history, settings.
+- **Sending files from the web**: pick files or drop them onto a device card; the browser uploads them via multipart and the backend runs the usual confirm/progress flow. Sending folders still requires the desktop app.
+- Real-time updates arrive over SSE; P2P traffic still uses the same protocol and port 8787 — the serve HTTP port only serves the browser and is loopback-only by default.
+- Quit with `Ctrl+C` (or `kill`); the node shuts down gracefully.
+
+On a Linux server, keep it running with systemd (adjust `/opt/FST/fst` to your path):
+
+```ini
+# /etc/systemd/system/fst.service
+[Unit]
+Description=FST headless web service
+After=network-online.target
+
+[Service]
+ExecStart=/opt/FST/fst serve -addr 0.0.0.0:9797
+Restart=on-failure
+User=fst
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl enable --now fst && journalctl -u fst -n 50   # find the access token in the log
+```
 
 ---
 

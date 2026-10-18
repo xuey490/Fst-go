@@ -42,6 +42,7 @@
 - [中继分组与出口鉴权](#中继分组与出口鉴权)
 - [终端如何连上中继](#终端如何连上中继)
 - [网络代理（可选）](#网络代理可选)
+- [无界面服务模式（fst serve）](#无界面服务模式fst-serve)
 - [配置与数据目录](#配置与数据目录)
 - [开发与测试](#开发与测试)
 - [现状与限制](#现状与限制)
@@ -190,6 +191,11 @@ UI 与 Go 之间 **不是** libp2p：同源 HTTP `/api/fst/*`（业务错误 HTT
 - SOCKS5 入站：不需要管理员、不需要 `wintun.dll`；默认只监听回环
 - Linux 桌面（Ubuntu 24.04 实测）：GTK4 + WebKitGTK 6.0 运行库；TUN 代理需 root / `CAP_NET_ADMIN` 与 `/dev/net/tun`
 
+**服务模式（fst serve）**
+
+- 任何现代浏览器（桌面 / Android / iOS）；后端可与桌面端同机部署
+- 默认只绑 `127.0.0.1:9797`；对局域网开放时放行所选端口的 **TCP**
+
 **中继**
 
 - 公网 IPv4 的 Linux（当前 deb 为 amd64）
@@ -216,6 +222,35 @@ wails3 build
 ```
 
 产物：`bin/fst.exe`，以及从 `build/windows/wintun/` 复制过去的 `bin/wintun.dll`。前端已经嵌进 exe，分发不必带 `front/`。
+
+服务模式再编译一个**控制台子系统**版本（从命令行运行时日志直出终端，推荐）：
+
+```powershell
+go build -o bin\fst-serve.exe .
+```
+
+### 运行
+
+**桌面版 `fst.exe`**（GUI 子系统）：
+
+1. 双击 `bin\fst.exe`，或在终端执行 `.\fst.exe`（不带参数即启动图形界面）。
+2. 退出：托盘图标右键退出，或点窗口关闭按钮按提示选择。
+
+**服务模式 `fst-serve.exe`**（控制台子系统）：
+
+```powershell
+cd bin
+.\fst-serve.exe serve                      # 默认 http://127.0.0.1:9797，仅本机
+.\fst-serve.exe serve -addr 0.0.0.0:9797   # 对局域网开放（需放行 TCP）
+```
+
+1. 启动后终端直接打印横幅：**访问地址 / 访问令牌（64 位 hex）/ 数据目录**，并实时滚动运行日志。
+2. 浏览器打开访问地址，输入一次令牌即可使用与桌面版一致的完整界面（会话 Cookie 保存 30 天）。
+3. 停止：在终端按 **Ctrl+C**（优雅退出）；后台进程可用 `Stop-Process -Name fst-serve`。
+4. 令牌忘了：查数据目录 `fst.log` 搜 `token=`，或删掉 SQLite `settings` 表的 `web_token` 重启重新生成。
+5. 注意：serve 与桌面版共用同一份数据目录与 8787 端口，**同一时间只能运行一个**；要并行请用 `FST_DATA_DIR` / `FST_PORT` 隔离（见下）。
+
+> 用 `fst.exe serve` 也能启动服务（GUI 子系统，日志经控制台挂接显示），但命令行场景推荐 `fst-serve.exe`，行为最可控。
 
 开发热重载（不写 `bin/`）：
 
@@ -255,6 +290,15 @@ wails3 build
 ```
 
 产物：`bin/fst`。
+
+服务模式（无界面、浏览器访问）可用同一份代码额外编译控制台版，或在装好依赖的机器上直接 `./bin/fst serve`：
+
+```bash
+go build -o bin/fst-serve .
+./bin/fst-serve serve          # 默认 127.0.0.1:9797，浏览器打开即完整界面
+```
+
+> 与桌面构建一样需要 GTK 开发库；纯服务器可先在别处编译，再把二进制拷过去（systemd 示例见下方服务模式章节）。
 
 - Ubuntu 22.04 没有 WebKitGTK 6.0，需改用 GTK3 栈：`sudo apt install -y libgtk-3-dev libwebkit2gtk-4.1-dev`，构建时加 `-tags gtk3`；Ubuntu 20.04 及以下不支持。
 - glibc 兼容：在哪个版本上编译，产物只能运行在 ≥ 该版本的系统；目标机器含 22.04 时建议直接在 22.04 上构建。
@@ -454,6 +498,46 @@ SQLite 使用 `PRAGMA user_version` 做版本化迁移（当前 v6：`transfers.
 整体搬家：退出 FST-Go 后拷贝整个 `%APPDATA%\FST\`。只是多装一台：只拷 exe，让它自己生成新身份。
 
 环境变量：`FST_DATA_DIR`、`FST_PORT`。
+
+---
+
+## 无界面服务模式（fst serve）
+
+同一份代码与数据，不带图形界面后台驻留，在 HTTP 端口提供与桌面版一致的完整界面——任何设备打开浏览器即可使用（Windows / Linux / macOS 桌面、手机、平板）。
+
+```bash
+fst serve                 # 默认监听 127.0.0.1:9797，仅本机可访问
+fst serve -addr 0.0.0.0:9797   # 对局域网开放（日志会出现安全警告，请确保令牌足够强）
+```
+
+> Windows 构建产物有两个：`fst.exe`（GUI 子系统，双击启动桌面版，serve 时输出经控制台挂接显示）；`fst-serve.exe`（控制台子系统，`go build -o bin\fst-serve.exe .` 生成）——**从命令行跑服务推荐用它**：cmd 会一直等待进程，日志与横幅（访问地址、令牌、Ctrl+C 提示）直接显示在终端，按 Ctrl+C 优雅停止。
+
+- **首次启动**会生成随机**访问令牌**并打印在日志里（也存于数据目录 `fst.db` 的 `settings.web_token`），浏览器打开访问地址后输入一次即可（会话 Cookie 保存 30 天）。
+- 界面与桌面版完全相同：设备发现、聊天（图片/文件/撤回/离线队列）、群聊、传输历史、设置。
+- **Web 端发文件**：点选或把文件拖到设备卡片上，浏览器直接 multipart 上传给后端，后续确认/进度与桌面一致；发文件夹请用桌面端。
+- 实时消息与传输进度经 SSE 推送；节点、聊天、传输走同一套 P2P 协议与 8787 端口，serve 的 HTTP 端口只服务浏览器，默认不对外暴露。
+- 退出：`Ctrl+C`（或 `kill`），节点会优雅关闭。
+
+Linux 服务器上建议用 systemd 驻留（`/opt/FST/fst` 换成实际路径）：
+
+```ini
+# /etc/systemd/system/fst.service
+[Unit]
+Description=FST headless web service
+After=network-online.target
+
+[Service]
+ExecStart=/opt/FST/fst serve -addr 0.0.0.0:9797
+Restart=on-failure
+User=fst
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl enable --now fst && journalctl -u fst -n 50   # 日志里找访问令牌
+```
 
 ---
 
