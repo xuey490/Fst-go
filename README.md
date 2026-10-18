@@ -1,3 +1,5 @@
+<div align="center">
+
 [**English**](README.md) | [简体中文](README_zh.md) | [日本語](README_ja.md)
 
 # FST-Go
@@ -6,6 +8,7 @@
 
 A P2P desktop application for LAN and cross-network use, written in Go: peer-to-peer file transfer, chat, and an optional self-hosted egress proxy. No accounts, no central business server. Every machine is both a client and a full node: peers on the same LAN are discovered automatically, and crossing network boundaries only requires one relay of your own.
 
+</div>
 
 ### This program is provided for learning and reference only. Do not use it for illegal purposes. It is meant to be helpful, but the author provides no warranty of any kind.
 
