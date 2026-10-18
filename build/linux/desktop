@@ -1,13 +1,11 @@
 [Desktop Entry]
 Version=1.0
-Name=My Product
-Comment=A FST application
-# The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/fst.exe %u
+Name=FST                        # 原为 My Product
+Comment=LAN/cross-network P2P file transfer and chat
+Exec=/usr/bin/fst %u            # 与 contents 的 dst 一致（原为 /usr/local/bin/fst.exe）
 Terminal=false
 Type=Application
-Icon=fst.exe
-Categories=Utility;
-StartupWMClass=fst.exe
-
+Icon=fst                        # 与图标 dst 一致（原为 fst.exe）
+Categories=Network;Utility;
+StartupWMClass=fst
  

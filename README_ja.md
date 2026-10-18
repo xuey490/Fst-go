@@ -1,5 +1,3 @@
-<div align="center">
-
 [English](README.md) | [简体中文](README_zh.md) | **日本語**
 
 # FST-Go
@@ -8,7 +6,6 @@
 
 Go で実装された LAN / クロスネットワーク対応の P2P デスクトップアプリケーションです。P2P のファイル転送、チャット、任意の自前出口プロキシを提供します。アカウント不要、中央の業務サーバーもありません。各マシンはクライアントであると同時に完全なノードです。同一 LAN 内は自動検出され、ネットワークをまたぐ場合も自分のリレーが 1 台あれば十分です。
 
-</div>
 
 ### 本プログラムは学習・参考用です。違法な目的には使用しないでください。お役に立てれば幸いですが、作者はいかなる保証も行いません。
 
@@ -190,6 +187,7 @@ UI と Go の間は libp2p では**ありません**。同一オリジンの HTT
 - クロスネットワーク：リレーへの 8787 も許可し、設定で「クロスネットワークを許可」を有効化
 - TUN プロキシ：管理者権限 + exe と同じディレクトリの `wintun.dll`
 - SOCKS5 受信：管理者権限も `wintun.dll` も不要。既定ではループバックのみ待ち受け
+- Linux デスクトップ（Ubuntu 24.04 で確認）：GTK4 + WebKitGTK 6.0 ランタイム。TUN プロキシには root / `CAP_NET_ADMIN` と `/dev/net/tun` が必要
 
 **リレー**
 
@@ -230,6 +228,37 @@ wails3 dev
 $env:FST_DATA_DIR = "D:\fst-dev-2"
 $env:FST_PORT = "8788"
 ```
+
+### Linux デスクトップ（Ubuntu 24.04 LTS で動作確認済み）
+
+デスクトップ版は GTK4 + WebKitGTK（C ライブラリ、CGO 必須）に依存するため、`GOOS=linux` でのクロスコンパイルは**できません**。Linux 上でビルドしてください：
+
+```bash
+# システム依存
+sudo apt update
+sudo apt install -y build-essential pkg-config curl git
+sudo apt install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+
+# ツールチェーン：Go 1.26+、Node 22+、pnpm（各公式ドキュメントに従ってインストール）
+go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+export PATH=$PATH:$(go env GOPATH)/bin
+
+# フロントエンド（Windows でビルドして front/dist をコピーしても可。embed には dist の存在が必要）
+cd front
+pnpm install
+pnpm build
+cd ..
+
+# ビルド
+wails3 build
+```
+
+成果物：`bin/fst`。
+
+- Ubuntu 22.04 には WebKitGTK 6.0 がないため、GTK3 スタックへ変更します：`sudo apt install -y libgtk-3-dev libwebkit2gtk-4.1-dev`、ビルド時に `-tags gtk3` を付与。Ubuntu 20.04 以前は非対応。
+- glibc 互換性：あるリリースでビルドしたバイナリは、そのリリース以降でのみ動作します。対象に 22.04 が含まれる場合は 22.04 上でビルドしてください。
+- TUN プロキシには root / `CAP_NET_ADMIN` と `/dev/net/tun` が必要です。SOCKS5 受信（`127.0.0.1:20300`）は特権不要です。
+- まず X11 セッションで確認してください。Wayland では WebKitGTK に既知の互換性問題があります。
 
 ---
 
@@ -443,7 +472,7 @@ npx vue-tsc --noEmit
 
 ## 現状と制限
 
-- 個人開発のリソース制約により、デスクトップ版は現在 Windows 向けにビルドされています。macOS / Linux デスクトップは配布対象外です（Linux はヘッドレスリレーで対応）。Windows インストーラーには NSIS が必要で、現在は主に exe を直接配布しています。
+- **デスクトップ版は現在 Windows が主要な配布対象です**。Linux デスクトップは Ubuntu 24.04 でのビルドと動作を確認済み（「デスクトップ版のビルド」参照）、macOS は未検証です。Windows インストーラーには NSIS が必要で、現在は主に exe を直接配布しています。
 - プロキシ IPv6 は依然として実験的な機能で、実際のデュアルスタック環境での手動リグレッションが必要です。IPv6 グローバルモードはシステムの既定 v6 ルートによるバイパスに依存します。プロキシチェーンには対応していません。
 - SOCKS5 の強化は既定で無効です。認証情報がない場合はループバック限定・認証なしのままで、同一マシンの任意のプロセスが利用できます。送信元許可リストと同時接続上限は手動で有効化する必要があります。
 - リレーのグループは共有キーで、複数グループ / 有効期限 / ソフト上限に対応しますが、オンラインでのローテーションや失効 API はありません。表の変更後は再起動が必要です。

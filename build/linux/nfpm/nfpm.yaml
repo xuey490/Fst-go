@@ -3,26 +3,26 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "fst.exe"
+name: "fst"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.1.0"
+version: "1.1.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A FST application"
-vendor: "My Company"
-homepage: "https://wails.io"
+description: "FST: LAN/cross-network P2P file transfer and chat"
+vendor: "FST-Go"
+homepage: "https://github.com/xuey490/Fst-go"
 license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/fst.exe"
-    dst: "/usr/local/bin/fst.exe"
+  - src: "./bin/fst"
+    dst: "/usr/local/bin/fst"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/fst.exe.png"
-  - src: "./build/linux/fst.exe.desktop"
-    dst: "/usr/share/applications/fst.exe.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/fst.png"
+  - src: "./build/linux/fst.desktop"
+    dst: "/usr/share/applications/fst.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:

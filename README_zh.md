@@ -1,4 +1,3 @@
-<div align="center">
 
 [English](README.md) | **简体中文** | [日本語](README_ja.md)
 
@@ -8,7 +7,6 @@
 
 用 Go 实现的局域网 / 跨网络 P2P 桌面程序：点对点传文件、聊天，以及可选的自建出网代理。无账号、无中心业务服务器。每台电脑既是客户端也是完整节点；局域网自动发现，跨网段只需要你自己的一台中继。
 
-</div>
 
 ### 本程序仅供学习参考之用，请勿用于非法用途，希望对你有帮助，但作者本人不提供任何担保。
 
@@ -190,6 +188,7 @@ UI 与 Go 之间 **不是** libp2p：同源 HTTP `/api/fst/*`（业务错误 HTT
 - 跨网络：再放行到中继的 8787，并在设置里打开「允许跨网络」
 - TUN 代理：管理员权限 + exe 旁的 `wintun.dll`
 - SOCKS5 入站：不需要管理员、不需要 `wintun.dll`；默认只监听回环
+- Linux 桌面（Ubuntu 24.04 实测）：GTK4 + WebKitGTK 6.0 运行库；TUN 代理需 root / `CAP_NET_ADMIN` 与 `/dev/net/tun`
 
 **中继**
 
@@ -230,6 +229,37 @@ wails3 dev
 $env:FST_DATA_DIR = "D:\fst-dev-2"
 $env:FST_PORT = "8788"
 ```
+
+### Linux 桌面（Ubuntu 24.04 LTS 实测可用）
+
+桌面端依赖 GTK4 + WebKitGTK（C 库，必须开 CGO），**不能**用 `GOOS=linux` 直接交叉编译，需在 Linux 上构建：
+
+```bash
+# 系统依赖
+sudo apt update
+sudo apt install -y build-essential pkg-config curl git
+sudo apt install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+
+# 工具链：Go 1.26+、Node 22+、pnpm（按各自官方文档安装）
+go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+export PATH=$PATH:$(go env GOPATH)/bin
+
+# 前端（也可以在 Windows 构建后把 front/dist 拷贝过来，embed 需要它存在）
+cd front
+pnpm install
+pnpm build
+cd ..
+
+# 构建
+wails3 build
+```
+
+产物：`bin/fst`。
+
+- Ubuntu 22.04 没有 WebKitGTK 6.0，需改用 GTK3 栈：`sudo apt install -y libgtk-3-dev libwebkit2gtk-4.1-dev`，构建时加 `-tags gtk3`；Ubuntu 20.04 及以下不支持。
+- glibc 兼容：在哪个版本上编译，产物只能运行在 ≥ 该版本的系统；目标机器含 22.04 时建议直接在 22.04 上构建。
+- TUN 代理需要 root / `CAP_NET_ADMIN` 与 `/dev/net/tun`；SOCKS5 入站（`127.0.0.1:20300`）无需特权。
+- 建议先在 X11 会话验证；Wayland 下 WebKitGTK 有已知兼容性问题。
 
 ---
 
@@ -443,7 +473,7 @@ npx vue-tsc --noEmit
 
 ## 现状与限制
 
-- **由于个人开发条件限制**，桌面端目前按 Windows 构建；macOS / Linux 桌面未作为发布目标（Linux 走无头中继）。Windows 安装包需自行安装 NSIS，当前主要分发裸 exe。
+- **桌面端目前以 Windows 为主要发布目标**；Linux 桌面已在 Ubuntu 24.04 实测可构建运行（见「编译桌面端」），macOS 未验证。Windows 安装包需自行安装 NSIS，当前主要分发裸 exe。
 - 代理 IPv6 仍是实验能力，需真实双栈环境手工回归；IPv6 全局模式依赖系统默认 v6 路由做绕行；不支持代理链。
 - SOCKS5 加固默认关闭：未配置账号时仍是仅回环免认证，任何本机进程可用；来源白名单与并发上限需手动开启。
 - 中继分组是共享密钥，支持多组/过期/软上限，但没有在线轮换或吊销接口；改表后需重启。

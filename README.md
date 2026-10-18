@@ -1,5 +1,3 @@
-<div align="center">
-
 [**English**](README.md) | [简体中文](README_zh.md) | [日本語](README_ja.md)
 
 # FST-Go
@@ -8,7 +6,6 @@
 
 A P2P desktop application for LAN and cross-network use, written in Go: peer-to-peer file transfer, chat, and an optional self-hosted egress proxy. No accounts, no central business server. Every machine is both a client and a full node: peers on the same LAN are discovered automatically, and crossing network boundaries only requires one relay of your own.
 
-</div>
 
 ### This program is provided for learning and reference only. Do not use it for illegal purposes. It is meant to be helpful, but the author provides no warranty of any kind.
 
@@ -190,6 +187,7 @@ Third-party libraries keep their own licenses. This repository's source is cover
 - Cross-network: also allow 8787 to the relay, and enable "Allow cross-network" in settings
 - TUN proxy: administrator rights + `wintun.dll` next to the exe
 - SOCKS5 inbound: no administrator rights, no `wintun.dll`; listens on loopback by default
+- Linux desktop (verified on Ubuntu 24.04): GTK4 + WebKitGTK 6.0 runtime libraries; the TUN proxy needs root / `CAP_NET_ADMIN` and `/dev/net/tun`
 
 **Relay**
 
@@ -230,6 +228,37 @@ Run a second instance on the same machine (separate identity and port):
 $env:FST_DATA_DIR = "D:\fst-dev-2"
 $env:FST_PORT = "8788"
 ```
+
+### Linux desktop (verified on Ubuntu 24.04 LTS)
+
+The desktop app depends on GTK4 + WebKitGTK (C libraries, CGO required), so it **cannot** be cross-compiled with `GOOS=linux`; build it on Linux:
+
+```bash
+# system dependencies
+sudo apt update
+sudo apt install -y build-essential pkg-config curl git
+sudo apt install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+
+# toolchain: Go 1.26+, Node 22+, pnpm (install per their official docs)
+go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+export PATH=$PATH:$(go env GOPATH)/bin
+
+# frontend (alternatively build it on Windows and copy front/dist over; embed requires it to exist)
+cd front
+pnpm install
+pnpm build
+cd ..
+
+# build
+wails3 build
+```
+
+Artifact: `bin/fst`.
+
+- Ubuntu 22.04 lacks WebKitGTK 6.0; use the GTK3 stack instead: `sudo apt install -y libgtk-3-dev libwebkit2gtk-4.1-dev`, and build with `-tags gtk3`. Ubuntu 20.04 and older are not supported.
+- glibc compatibility: a binary built on one release only runs on that release or newer; if your targets include 22.04, build on 22.04.
+- The TUN proxy requires root / `CAP_NET_ADMIN` and `/dev/net/tun`; the SOCKS5 inbound (`127.0.0.1:20300`) needs no privileges.
+- Verify in an X11 session first; WebKitGTK has known compatibility issues under Wayland.
 
 ---
 
@@ -443,7 +472,7 @@ Collaboration conventions are in [AGENTS.md](AGENTS.md). Modules, protocols, and
 
 ## Status and limitations
 
-- **Due to limited personal development resources**, the desktop app is currently built for Windows only; macOS / Linux desktop is not a release target (Linux is served by the headless relay). The Windows installer requires NSIS, and the main distribution is currently a bare exe.
+- **Windows is currently the primary release target** for the desktop app; the Linux desktop has been verified to build and run on Ubuntu 24.04 (see "Building the desktop app"), while macOS is unverified. The Windows installer requires NSIS, and the main distribution is currently a bare exe.
 - Proxy IPv6 is still experimental and needs manual regression in a real dual-stack environment; global IPv6 mode relies on the system default v6 route for bypass; proxy chaining is not supported.
 - SOCKS5 hardening is off by default: without credentials it remains loopback-only and unauthenticated, so any local process can use it; the source allowlist and concurrency caps must be enabled manually.
 - Relay groups are shared keys and support multiple groups, expiry, and soft caps, but there is no online rotation or revocation API; the relay must be restarted after changing the table.
