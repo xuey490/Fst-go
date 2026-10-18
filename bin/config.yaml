@@ -1,0 +1,22 @@
+# FST 网络配置（设置页保存会改写本文件，重启生效）
+# relays: 中继节点，形如 /ip4/1.2.3.4/tcp/8787/p2p/<PeerID>
+# group: 中继分组密钥；填写后只与同组终端互相可见（中继需用 -group/-group-file 配同一个值），留空为不分组
+# proxy: TUN 出口代理（IPv4 TCP/UDP，可选 IPv6）
+#   split : 仅匹配 routes(CIDR) / domains(域名) 的流量走隧道，其余直连；填了域名时这些域名的 DNS 由本地 fake-IP 接管
+#   global: 全部流量（含 DNS）经出口，域名在出口侧解析；仅 LAN 与出口中继 IP 直连
+#   routes/domains 均可写多条（每行一条，也支持空格/逗号分隔）
+#   token : 中继 -exit-token 的出口令牌；留空表示不携带（旧行为）
+#   ipv6  : 实验；TUN 增加 IPv6 栈、fake AAAA 与 v6 路由，失败自动降级为 IPv4
+#   socks_enable: 本机 SOCKS5 入站开关（缺省开启）；socks_* 为认证/来源/并发加固
+enable_relay: false
+relays:
+    - /ip4/127.0.0.1/tcp/8787/p2p/12D3KooWESiAeSLF3FbWArr1jvWw3HAK6aDBPpD9CKByQ2MrSeQo
+group: 5d90f9aa4f94bf00e269e2ff7ab6e553
+proxy:
+    enable: false
+    mode: global
+    exit: /ip4/127.0.0.1/tcp/8787/p2p/12D3KooWESiAeSLF3FbWArr1jvWw3HAK6aDBPpD9CKByQ2MrSeQo
+    domains:
+        - google.com
+        - gmail.com
+    socks_enable: false
