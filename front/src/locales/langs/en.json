@@ -1,0 +1,544 @@
+{
+  "httpMsg": {
+    "unauthorized": "Unauthorized access, please login again",
+    "forbidden": "Access to this resource is forbidden",
+    "notFound": "The requested resource does not exist",
+    "methodNotAllowed": "Request method not allowed",
+    "requestTimeout": "Request timeout, please try again later",
+    "internalServerError": "Internal server error, please try again later",
+    "badGateway": "Bad gateway error, please try again later",
+    "serviceUnavailable": "Service temporarily unavailable, please try again later",
+    "gatewayTimeout": "Gateway timeout, please try again later",
+    "requestCancelled": "Request cancelled",
+    "networkError": "Network connection error, please check your connection",
+    "requestFailed": "Request failed",
+    "requestConfigError": "Request configuration error"
+  },
+  "topBar": {
+    "search": {
+      "title": "Search"
+    },
+    "user": {
+      "userCenter": "User center",
+      "docs": "Document",
+      "github": "Github",
+      "lockScreen": "Lock screen",
+      "logout": "Log out"
+    },
+    "guide": {
+      "title": "Click here to view",
+      "theme": "Theme style",
+      "menu": "Open top menu",
+      "description": "More configurations"
+    }
+  },
+  "common": {
+    "tips": "Prompt",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "logOutTips": "Do you want to log out?"
+  },
+  "search": {
+    "placeholder": "Search page",
+    "historyTitle": "Search history",
+    "switchKeydown": "Navigate",
+    "selectKeydown": "Select",
+    "exitKeydown": "Close"
+  },
+  "setting": {
+    "menuType": {
+      "title": "Menu Layout",
+      "list": [
+        "Vertical",
+        "Horizontal",
+        "Mixed",
+        "Dual"
+      ]
+    },
+    "theme": {
+      "title": "Theme Style",
+      "list": [
+        "Light",
+        "Dark",
+        "System"
+      ]
+    },
+    "menu": {
+      "title": "Menu Style"
+    },
+    "color": {
+      "title": "Theme Color"
+    },
+    "box": {
+      "title": "Box Style",
+      "list": [
+        "Border",
+        "Shadow"
+      ]
+    },
+    "container": {
+      "title": "Container Width",
+      "list": [
+        "Full",
+        "Boxed"
+      ]
+    },
+    "basics": {
+      "title": "Basic Config",
+      "list": {
+        "multiTab": "Show work tab",
+        "accordion": "Sidebar opens accordion",
+        "collapseSidebar": "Show sidebar button",
+        "reloadPage": "Show reload page button",
+        "fastEnter": "Show fast enter",
+        "breadcrumb": "Show crumb navigation",
+        "language": "Show multilingual selection",
+        "progressBar": "Show top progress bar",
+        "weakMode": "Color Weakness Mode",
+        "watermark": "Global watermark",
+        "menuWidth": "Menu width",
+        "tabStyle": "Tab style",
+        "pageTransition": "Page animation",
+        "borderRadius": "Custom radius"
+      }
+    },
+    "tabStyle": {
+      "default": "Default",
+      "card": "Card",
+      "google": "Chrome"
+    },
+    "transition": {
+      "list": {
+        "none": "None",
+        "fade": "Fade",
+        "slideLeft": "Slide Left",
+        "slideBottom": "Slide Bottom",
+        "slideTop": "Slide Top"
+      }
+    },
+    "actions": {
+      "resetConfig": "Reset Config",
+      "copyConfig": "Copy Config",
+      "copySuccess": "Configuration copied to clipboard, paste it into src/config/setting.ts file",
+      "copyFailed": "Copy failed, please try again",
+      "resetFailed": "Reset failed, please refresh the page and try again"
+    }
+  },
+  "notice": {
+    "title": "Notice",
+    "btnRead": "Mark as read",
+    "bar": [
+      "Notice",
+      "Message",
+      "Todo"
+    ],
+    "text": [
+      "No"
+    ],
+    "viewAll": "View all"
+  },
+  "worktab": {
+    "btn": {
+      "refresh": "Refresh",
+      "fixed": "Fixed",
+      "unfixed": "Unfixed",
+      "closeLeft": "Close left",
+      "closeRight": "Close right",
+      "closeOther": "Close other",
+      "closeAll": "Close all"
+    }
+  },
+  "login": {
+    "leftView": {
+      "title": "A backend system of beauty and efficiency",
+      "subTitle": "A sleek and practical interface for a great user experience"
+    },
+    "title": "Welcome back",
+    "subTitle": "Please enter your account and password to login",
+    "roles": {
+      "super": "Super Admin",
+      "admin": "Admin",
+      "user": "User"
+    },
+    "placeholder": {
+      "username": "Please enter your account",
+      "password": "Please enter your password",
+      "code": "Please enter the verification code",
+      "slider": "Please slide to verify"
+    },
+    "sliderText": "Please slide to verify",
+    "sliderSuccessText": "Verification successful",
+    "rememberPwd": "Remember password",
+    "forgetPwd": "Forgot password",
+    "btnText": "Login",
+    "noAccount": "No account yet?",
+    "register": "Register",
+    "success": {
+      "title": "Login successful",
+      "message": "Welcome back"
+    }
+  },
+  "forgetPassword": {
+    "title": "Forgot password?",
+    "subTitle": "Enter your email to reset your password",
+    "placeholder": "Please enter your email",
+    "submitBtnText": "Submit",
+    "backBtnText": "Back"
+  },
+  "register": {
+    "title": "Create account",
+    "subTitle": "Welcome to join us, please fill in the following information to complete the registration",
+    "placeholder": {
+      "username": "Please enter your account",
+      "password": "Please enter your password",
+      "confirmPassword": "Please enter your password again"
+    },
+    "rule": {
+      "confirmPasswordRequired": "Please enter your password again",
+      "passwordMismatch": "The two passwords are inconsistent!",
+      "usernameLength": "The length is 3 to 20 characters",
+      "passwordLength": "The password length cannot be less than 6 digits",
+      "agreementRequired": "Please agree to the privacy policy"
+    },
+    "agreeText": "I agree",
+    "privacyPolicy": "Privacy policy",
+    "submitBtnText": "Register",
+    "hasAccount": "Already have an account?",
+    "toLogin": "To login"
+  },
+  "lockScreen": {
+    "pwdError": "Password error",
+    "lock": {
+      "inputPlaceholder": "Please input lock screen password",
+      "btnText": "Lock"
+    },
+    "unlock": {
+      "inputPlaceholder": "Please input unlock password",
+      "btnText": "Unlock",
+      "backBtnText": "Back to login"
+    }
+  },
+  "greeting": {
+    "dawn": "Good morning!",
+    "morning": "Good morning!",
+    "afternoon": "Good afternoon!",
+    "evening": "Good evening!"
+  },
+  "exceptionPage": {
+    "403": "Sorry, you do not have permission to access this page",
+    "404": "Sorry, the page you are trying to access does not exist",
+    "500": "Sorry, there was an error on the server",
+    "gohome": "Go Home"
+  },
+  "menus": {
+    "login": {
+      "title": "Login"
+    },
+    "register": {
+      "title": "Register"
+    },
+    "forgetPassword": {
+      "title": "Forget Password"
+    },
+    "outside": {
+      "title": "Outside"
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "console": "Console"
+    },
+    "result": {
+      "title": "Result Page",
+      "success": "Success",
+      "fail": "Fail"
+    },
+    "exception": {
+      "title": "Exception",
+      "forbidden": "403",
+      "notFound": "404",
+      "serverError": "500"
+    },
+    "system": {
+      "title": "System Settings",
+      "user": "User Manage",
+      "role": "Role Manage",
+      "tenant": "Tenant Manage",
+      "userCenter": "User Center",
+      "menu": "Menu Manage"
+    },
+    "fst": {
+      "device": "Devices",
+      "chat": "Chat",
+      "transfer": "Transfers",
+      "settings": "Settings"
+    }
+  },
+  "table": {
+    "form": {
+      "reset": "Reset",
+      "submit": "Submit"
+    },
+    "searchBar": {
+      "reset": "Reset",
+      "search": "Search",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "searchInputPlaceholder": "Please enter",
+      "searchSelectPlaceholder": "Please select"
+    },
+    "selection": "Select",
+    "sizeOptions": {
+      "small": "Compact",
+      "default": "Default",
+      "large": "Loose"
+    },
+    "column": {
+      "selection": "Select",
+      "expand": "Expand",
+      "index": "Index"
+    },
+    "zebra": "Zebra",
+    "border": "Border",
+    "headerBackground": "Header BG"
+  },
+  "fst": {
+    "common": {
+      "copy": "Copy",
+      "copied": "Copied",
+      "save": "Save",
+      "saveSettings": "Save settings",
+      "cancel": "Cancel",
+      "remove": "Remove",
+      "connect": "Connect",
+      "search": "Search",
+      "reset": "Reset",
+      "pick": "Choose…",
+      "dash": "—",
+      "restartHint": "Takes effect after restart"
+    },
+    "feature": {
+      "title": "Advanced networking",
+      "unlocked": "The related features are fully unlocked",
+      "locked": "The related features are blocked",
+      "restart": "Takes effect after restarting FST",
+      "lockConfirm": "Block cross-network and proxy settings?",
+      "blocked": "This feature cannot be blocked right now"
+    },
+    "device": {
+      "self": "This device",
+      "peerId": "PeerID",
+      "addDevice": "Add device",
+      "tabOnline": "Online",
+      "tabRelay": "Relays",
+      "tabOffline": "Offline",
+      "emptyOnline": "No online devices yet. LAN peers are discovered automatically; across networks both sides must use the same relay.",
+      "emptyRelay": "No relay servers (configure and enable cross-network in Settings)",
+      "emptyOffline": "No offline devices",
+      "direct": "Direct",
+      "relay": "Relay",
+      "directTip": "Direct connection",
+      "relayTip": "Forwarded through a relay: slower and bandwidth-limited; hole punching will try to upgrade it",
+      "trust": "Trust",
+      "trustTip": "Trusted device: incoming files are accepted automatically",
+      "removeDevice": "Remove device",
+      "removeTitle": "Remove offline device",
+      "removeConfirm": "Remove offline device “{name}”? Its chat history and transfer records are deleted from this device; received files are kept.",
+      "removed": "Offline device removed",
+      "operations": "Actions",
+      "sendFile": "Send files",
+      "sendFolder": "Send folder",
+      "chat": "Chat",
+      "dropHint": "Drop files onto this card",
+      "online": "Online",
+      "offlineSince": "Offline {time}",
+      "justNow": "just now",
+      "minutesAgo": "{n} min ago",
+      "hoursAgo": "{n} h ago",
+      "daysAgo": "{n} d ago",
+      "requestSent": "Request sent, waiting for the peer",
+      "skippedHint": "Skipped {n} symlink(s) / special file(s)",
+      "batchesSent": "Split into {n} batches ({files} files in total)",
+      "addTitle": "Add device",
+      "modeAddr": "Full address",
+      "modeRelay": "PeerID + relay",
+      "modeId": "PeerID only (DHT)",
+      "addrPlaceholder": "/ip4/1.2.3.4/tcp/8787/p2p/12D3Koo… (shown on the peer's Settings page)",
+      "peerPlaceholder": "Peer PeerID (12D3Koo…)",
+      "relayPlaceholder": "Relay address /ip4/…/tcp/…/p2p/<relay PeerID>",
+      "idHint": "Both sides must enable cross-network and use the same relays (relays also act as DHT bootstrap nodes); the DHT resolves the address.",
+      "connecting": "Connecting; the device will appear once it comes online"
+    },
+    "chat": {
+      "noDevices": "No devices",
+      "offlineHint": "Offline, messages are queued and retried automatically",
+      "loadOlder": "Load earlier messages",
+      "sendImage": "Send images",
+      "send": "Send",
+      "pickDevice": "Pick a device on the left to start chatting",
+      "editorPlaceholder": "Type a message; rich text is supported",
+      "noImages": "No image files selected",
+      "imagesSent": "{n} image(s) sent, waiting for the peer",
+      "statusSending": "Sending",
+      "statusSent": "Sent",
+      "statusDelivered": "Delivered",
+      "statusFailed": "Failed",
+      "statusQueued": "Queued",
+      "retry": "Retry",
+      "quote": "Quote",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFailed": "Copy failed",
+      "quoting": "Quoting",
+      "cancelQuote": "Cancel quote",
+      "recallExpired": "More than 2 minutes old; cannot recall",
+      "me": "Me",
+      "roomHistoryTag": "History",
+      "roomArchived": "Group key changed; history is read-only",
+      "private": "Direct",
+      "group": "Rooms",
+      "noRooms": "No chat rooms",
+      "pickRoom": "Pick a room on the left",
+      "roomEmpty": "No messages yet",
+      "roomLAN": "LAN",
+      "roomGroup": "Group",
+      "roomLocalHint": "History is stored on this device only",
+      "roomWelcome": "Online members in this room will receive your message",
+      "roomPlaceholder": "Message the room; Enter to send",
+      "recalled": "Message recalled",
+      "recall": "Recall",
+      "recallConfirm": "Both sides will stop seeing this message. Recall it?",
+      "previewImage": "[Image]",
+      "previewFile": "[File]",
+      "fileCard": "File",
+      "imagePending": "Image pending",
+      "sendFile": "Send file",
+      "attachLimit": "At most {n} attachments per message; extras were not sent"
+    },
+    "transfer": {
+      "fileName": "File name",
+      "keyword": "Keyword",
+      "direction": "Direction",
+      "status": "Status",
+      "out": "Out",
+      "in": "In",
+      "outgoing": "Sending",
+      "incoming": "Receiving",
+      "folder": "Folder",
+      "device": "Device",
+      "size": "Size",
+      "time": "Time",
+      "actions": "Actions",
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "retryBatch": "Resume batch",
+      "batchRetried": "Resuming unfinished files in this batch",
+      "clear": "Clear transfer log",
+      "clearSelected": "{n} selected",
+      "clearNone": "Select records to clear; unselected ones stay",
+      "clearTitle": "Clear transfer log",
+      "clearSelectedConfirm": "Delete the {n} selected finished records? Unselected records and downloaded files are kept.",
+      "cleared": "Cleared {n} record(s)",
+      "clearKept": "Some records are still running or referenced by chats and were kept",
+      "reveal": "Show in folder",
+      "statusPending": "Waiting for approval",
+      "statusAccepted": "Preparing",
+      "statusRunning": "Transferring",
+      "statusDone": "Done",
+      "statusFailed": "Failed",
+      "statusCancelled": "Cancelled",
+      "statusRejected": "Rejected"
+    },
+    "settings": {
+      "selfTitle": "This device",
+      "nickname": "Nickname",
+      "avatar": "Avatar",
+      "avatarHint": "PNG/JPEG, at most 12KB; synced to connected devices with HELLO",
+      "avatarPick": "Choose image",
+      "avatarClear": "Clear avatar",
+      "listenAddrs": "Listen addresses",
+      "addrHint": "If discovery fails, send a full address to the peer and let it paste it under Manual connect.",
+      "transferTitle": "Transfers",
+      "downloadDir": "Download folder",
+      "concurrency": "Concurrent files",
+      "rateLimit": "Rate limit",
+      "rateLimitHint": "KB/s, 0 = unlimited (send + receive combined, applies immediately)",
+      "prehash": "Pre-hash before offer",
+      "prehashHint": "Compute whole-file SHA-256 first so the receiver can skip files it already has (reads large files twice)",
+      "autoAccept": "Auto accept",
+      "autoAcceptHint": "Skip the confirmation dialog for every device (not recommended; trust a single device instead)",
+      "autostart": "Start at login",
+      "closeAction": "Close button",
+      "closeAsk": "Ask every time",
+      "closeTray": "Minimize to tray",
+      "closeQuit": "Quit",
+      "singleInstance": "Single instance only",
+      "singleInstanceHint": "Takes effect after restart. When off, multiple instances can run (each with its own data dir and identity, for development).",
+      "wanTitle": "Cross-network",
+      "wanEnable": "Allow cross-network",
+      "wanEnableHint": "Takes effect after restart. Advertises public addresses and uses NAT traversal / relays (the peer must enable it too).",
+      "reachability": "Reachability",
+      "reachHint": "Publicly reachable devices automatically relay for others",
+      "reachPublic": "Public",
+      "reachPrivate": "LAN only (needs a relay or hole punching)",
+      "reachUnknown": "Detecting / unknown",
+      "relays": "Relay addresses",
+      "relaysPlaceholder": "One per line: /ip4/203.0.113.5/tcp/8787/p2p/12D3Koo… (no built-in public relays; use your own)",
+      "group": "Group key",
+      "groupPlaceholder": "Empty means no group",
+      "groupHint": "Reconnects to the relay immediately on save; other cross-network fields still need a restart. The relay must use the same -group or -group-file value.",
+      "groupStatus": "Group status",
+      "groupExpires": "Expires {time}",
+      "groupNever": "No expiry",
+      "configPath": "Config file",
+      "configPathEmpty": "Not created yet; it will be generated on save (next to the executable by default)",
+      "qrcode": "This device (QR)",
+      "proxyTitle": "Network proxy (egress via relay)",
+      "proxyAlert": "IPv4 TCP/UDP. Split: only matching CIDRs/domains go through the tunnel, everything else stays direct (for listed domains, DNS is hijacked by the local fake-IP so they do use the tunnel). Global: all traffic including DNS goes through the relay exit, and names are resolved on the exit. One entry per line. Needs administrator rights and a restart. The relay must run with -exit and its allowlist must contain this PeerID.",
+      "proxyStatus": "Status",
+      "proxyDisabled": "Disabled",
+      "proxyDisabledHint": "Enable the proxy and restart to take effect",
+      "proxyRunning": "Running",
+      "proxyProbeOK": "Exit reachable",
+      "proxyProbeFail": "Exit self-check failed: {err}",
+      "proxyProbing": "Checking exit connectivity…",
+      "proxyNotRunning": "Not running",
+      "proxyUnknownReason": "Unknown reason; see %APPDATA%\\FST\\fst.log",
+      "proxySocks": "SOCKS5 port",
+      "proxySocksHint": "No admin rights needed: point your browser or system proxy here to use the relay (names are resolved on the exit)",
+      "proxyEnable": "Enable proxy",
+      "proxyMode": "Mode",
+      "proxyModeSplit": "Split (CIDR / domains)",
+      "proxyModeGlobal": "Global (everything via exit, DNS included)",
+      "proxyExit": "Exit relay",
+      "proxyExitPlaceholder": "Pick a configured relay",
+      "proxyRoutes": "CIDRs",
+      "proxyRoutesPlaceholder": "One IPv4 CIDR per line (spaces/commas also work), e.g.\n93.184.216.0/24\n142.250.0.0/15",
+      "proxyDomains": "Domains",
+      "proxyDomainsPlaceholder": "One domain per line (subdomains included; spaces/commas also work), e.g.\ngoogle.com\nyoutube.com",
+      "proxyToken": "Exit token",
+      "proxyTokenPlaceholder": "Token configured with -exit-token; leave empty to send none",
+      "proxyIPv6": "Proxy IPv6",
+      "proxyIPv6Hint": "Experimental: adds an IPv6 stack and AAAA resolving to the TUN; falls back to IPv4 if init fails",
+      "experimental": "Experimental",
+      "restartHint": "Takes effect after restart",
+      "socksTitle": "SOCKS5 inbound (hardening)",
+      "socksEnable": "SOCKS5 inbound",
+      "socksOn": "Enabled",
+      "socksOff": "Disabled",
+      "socksEnableHint": "When disabled, port 20300 is not opened (restart to apply); the fields below only apply when enabled",
+      "socksNoAuthWarn": "No credentials set: loopback only and no auth, any local process can use it.",
+      "socksUser": "Username",
+      "socksPass": "Password",
+      "socksAuthHint": "When set, RFC1929 username/password auth is required",
+      "socksListen": "Listen address",
+      "socksListenPlaceholder": "Empty = 127.0.0.1:20300; defaults to 0.0.0.0:20300 when an allow list is set",
+      "socksAllow": "Allowed sources",
+      "socksAllowPlaceholder": "One CIDR per line, e.g. 192.168.1.0/24; empty = loopback only",
+      "socksLimits": "Concurrency limits",
+      "socksMaxTotal": "total",
+      "socksMaxPerIP": "per IP",
+      "manualTitle": "Manual connect",
+      "manualPlaceholder": "/ip4/192.168.1.20/tcp/8787/p2p/12D3Koo…"
+    }
+  }
+}

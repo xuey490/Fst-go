@@ -1,0 +1,15 @@
+[Unit]
+Description=FST relay (libp2p circuit relay + DHT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787
+DynamicUser=yes
+StateDirectory=fst-relay
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

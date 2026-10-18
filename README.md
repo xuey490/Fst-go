@@ -1,182 +1,204 @@
+[**English**](README.md) | [简体中文](README_zh.md) | [日本語](README_ja.md)
 
 # FST-Go
 
-**File Safe Transfer** — 文件安全传输。
+**File Safe Transfer** — secure file transfer.
 
-用 Go 实现的局域网 / 跨网络 P2P 桌面程序：点对点传文件、聊天，以及可选的自建出网代理。无账号、无中心业务服务器。每台电脑既是客户端也是完整节点；局域网自动发现，跨网段只需要你自己的一台中继。
+A P2P desktop application for LAN and cross-network use, written in Go: peer-to-peer file transfer, chat, and an optional self-hosted egress proxy. No accounts, no central business server. Every machine is both a client and a full node: peers on the same LAN are discovered automatically, and crossing network boundaries only requires one relay of your own.
 
 
-## 本软件仅供学习与研究使用。请遵守当地法律法规。使用本软件所产生的任何后果由使用者自行承担，本人不提供任何担保。
+### This program is provided for learning and reference only. Do not use it for illegal purposes. It is meant to be helpful, but the author provides no warranty of any kind.
 
-| 名称 | 含义 |
+| Name | Meaning |
 |---|---|
-| **FST** | **F**ile **S**afe **T**ransfer，文件安全传输 |
-| **Go** | 后端与节点用 Go 编写，也表示把文件「送出去」 |
+| **FST** | **F**ile **S**afe **T**ransfer |
+| **Go** | Backend and node are written in Go; it also suggests "sending files out" |
 
-仓库与命令行里仍使用短名 `fst`（例如 `fst.exe`、`fst-relay`、协议 ID `/fst/...`），与产品名 FST-Go 是同一项目。
+The repository and CLI still use the short name `fst` (for example `fst.exe`, `fst-relay`, protocol IDs under `/fst/...`); it is the same project as the product name FST-Go.
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev/)
 [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?logo=vue.js)](https://vuejs.org/)
 [![libp2p](https://img.shields.io/badge/libp2p-v0.50-6e57ff)](https://libp2p.io/)
 
-当前发布形态：**Windows 桌面端**（`fst.exe`）+ **Linux 无头中继**（`fst-relay`）。本仓库以 [GNU Affero General Public License v3.0](LICENSE) 发布。
+Current release form: **Windows desktop** (`fst.exe`) + **headless Linux relay** (`fst-relay`). This repository is released under the [MIT License](LICENSE).
 
 ---
 
-## 目录
+## Contents
 
-- [它解决什么问题](#它解决什么问题)
-- [功能](#功能)
-- [特点](#特点)
-- [架构](#架构)
-- [模块](#模块)
-- [协议](#协议)
-- [开源组件](#开源组件)
-- [运行环境](#运行环境)
-- [编译桌面端](#编译桌面端)
-- [打包与分发](#打包与分发)
-- [中继：编译、部署与设置](#中继编译部署与设置)
-- [终端如何连上中继](#终端如何连上中继)
-- [网络代理（可选）](#网络代理可选)
-- [配置与数据目录](#配置与数据目录)
-- [开发与测试](#开发与测试)
-- [现状与限制](#现状与限制)
-- [许可证](#许可证)
-
----
-
-## 它解决什么问题
-
-常见网盘、即时通讯和商业 VPN 都把流量、文件和通讯录放在别人的服务器上。办公室、家庭局域网、或两台都在 NAT 后面的电脑，往往只想：
-
-1. **同一网段互相看见、发消息、传文件**，不要注册、不要公网账号。
-2. **不在同一网段时**，用自己的一台 VPS 当“介绍人 / 转发人”，而不是把文件存到云盘。
-3. 需要时，让本机部分或全部上网流量 **经自己的中继出网**（类似自建出口），而不是再装一套无关的代理栈。
-
-FST-Go 把这三件事放进同一个进程、同一个端口：设备身份是 libp2p PeerID，发现、聊天、文件和代理都在加密连接上多路复用。文件走端到端加密信道、整文件 SHA-256 校验、断点续传，不经过第三方网盘。
+- [The problem it solves](#the-problem-it-solves)
+- [Features](#features)
+- [Design highlights](#design-highlights)
+- [Architecture](#architecture)
+- [Modules](#modules)
+- [Protocols](#protocols)
+- [Open-source components](#open-source-components)
+- [Requirements](#requirements)
+- [Building the desktop app](#building-the-desktop-app)
+- [Packaging and distribution](#packaging-and-distribution)
+- [Relay: build, deploy and configure](#relay-build-deploy-and-configure)
+- [Relay groups and exit authorization](#relay-groups-and-exit-authorization)
+- [How a client connects to a relay](#how-a-client-connects-to-a-relay)
+- [Network proxy (optional)](#network-proxy-optional)
+- [Configuration and data directory](#configuration-and-data-directory)
+- [Development and testing](#development-and-testing)
+- [Status and limitations](#status-and-limitations)
+- [License](#license)
 
 ---
 
-## 功能
+## The problem it solves
 
-| 能力 | 说明 |
+Common cloud drives, instant messengers, and commercial VPNs keep your traffic, files, and contacts on someone else's servers. Offices, home LANs, and two machines that are both behind NAT often just want to:
+
+1. **See each other, exchange messages, and transfer files on the same subnet** — no registration, no public accounts.
+2. **When not on the same subnet**, use one of your own VPSes as the introducer/forwarder instead of uploading files to a cloud drive.
+3. **When needed, route some or all of this machine's traffic through your own relay** (a self-hosted egress) instead of installing an unrelated proxy stack.
+
+FST-Go puts these three things into one process and one service port: device identity is a libp2p PeerID, and discovery, chat, files, and proxying are all multiplexed over encrypted connections. Files travel over end-to-end encrypted channels with whole-file SHA-256 verification and resumable transfers, never through a third-party cloud drive.
+
+---
+
+## Features
+
+| Capability | Description |
 |---|---|
-| 设备发现 | 局域网 mDNS 自动上线；跨网靠中继目录 + 私有 DHT，可用完整 multiaddr、PeerID+中继或仅 PeerID 添加 |
-| 点对点聊天 | 加密信道、本地存档、送达 ACK、未读、富文本；图片按文件通道发送 |
-| 文件传输 | 多选 / 拖到设备卡片、确认弹窗、信任或自动接收、并发 1–8、`.fstpart` 断点续传、整文件 SHA-256 |
-| 跨网络 | AutoNAT、DCUtR 打洞、Circuit Relay；打洞成功后丢掉中继冗余连接，升级直连 |
-| 自建中继 | `fst-relay`：电路中继 + 在线目录 + DHT Server；可选 TCP/UDP 出网出口（PeerID 白名单） |
-| 出网代理 | TUN 分流（CIDR / 域名）或全局；IPv4 TCP+UDP；本机 SOCKS5 入站（无需管理员也可给浏览器用） |
-| 桌面集成 | 托盘、关闭行为（询问 / 托盘 / 退出）、系统通知、开机自启、单实例或多实例 |
+| Device discovery | Automatic LAN peering via mDNS; across networks via relay directory + private DHT; add peers by full multiaddr, PeerID + relay, or PeerID alone |
+| Peer-to-peer chat | Encrypted channel, local archive, delivery ACK, unread counts, rich text (≤32,000 characters per message); text / image / file-card bubbles; recall within 2 minutes; avatars synced via HELLO |
+| Offline messages | When the peer is offline or times out, messages become "queued"; scanned every 15 seconds and retried with exponential backoff (capped at 10 minutes / 20 attempts), flushed immediately when the peer comes online; manual retry from the bubble |
+| Group chat | Automatic GossipSub rooms: one room per LAN, plus a same-group room once a relay group key is configured; text only, local history, de-duplicated by message ID; reuses 8787, no extra port |
+| File transfer | Multi-select / drag onto a device card, confirmation dialog, trusted or auto-accept, concurrency 1–8, `.fstpart` resume, whole-file SHA-256, global rate limit, pre-hash skip, continue the batch after failures |
+| Folder transfer | Recursive directory send with relative structure and empty directories preserved; ≤1000 files per batch, larger sets split automatically; symlinks/special files reported before sending |
+| Cross-network | AutoNAT, DCUtR hole punching, Circuit Relay; after a successful punch the redundant relay connection is dropped and upgraded to direct |
+| Self-hosted relay | `fst-relay`: circuit relay + online directory + DHT server; group isolation, group expiry, per-group soft limits |
+| Exit authorization | `-exit-allow` PeerID allowlist, `-exit-token` multiple tokens with expiry, `-exit-group` group restriction, intersected; all unconfigured keeps the previous behavior |
+| Egress proxy | TUN split (CIDR / domain) or global; IPv4 TCP+UDP, optional experimental IPv6; local SOCKS5 inbound (default `127.0.0.1:20300`) |
+| SOCKS5 hardening | Optional RFC1929 credentials, source CIDR allowlist, per-IP/global concurrency caps; without credentials it stays loopback-only and unauthenticated |
+| Desktop integration | Tray, close behavior (ask / tray / quit), system notifications, autostart, single or multiple instances |
+| Engineering foundation | `user_version` schema migrations, offline icons, zh/en strings for the four feature pages |
 
 ---
 
-## 特点
+## Design highlights
 
-- **身份是 PeerID，不是 IP / MAC。** 私钥在 `%APPDATA%\FST\identity.key`，昵称和地址可变，设备主键不变。
-- **单端口 8787**（TCP + QUIC/UDP 同号）。聊天、文件、代理都走 libp2p stream，不为业务再开公网端口。
-- **文件字节不进前端。** Vue 只拿到本地路径；读写、哈希、进度都在 Go 里，进度事件节流推送。
-- **无中心业务库。** 聊天和传输历史只存在本机 SQLite，节点之间不同步消息。
-- **加密不自研。** 应用层消息走 libp2p 安全通道（TCP 上 Noise/TLS，QUIC 自带）。
-- **出口 fail-closed。** 中继开 `-exit` 但白名单为空时，谁也不能拿这台机器当代理。
-- **中继可完全自建。** 项目不内置公共中继；你填谁的地址，流量才经过谁。
+- **Identity is a PeerID, not an IP / MAC.** The private key lives in `%APPDATA%\FST\identity.key`; nicknames and addresses may change, the device key does not.
+- **Single service port 8787** (TCP + QUIC/UDP on the same number). Chat, files, and proxying all use libp2p streams; no extra public port for features. The only exception is the local SOCKS5 inbound (default `127.0.0.1:20300`, loopback only).
+- **File bytes never enter the frontend.** Vue only receives local paths; I/O, hashing, and progress stay in Go, with throttled progress events; chat image/file cards carry only a transfer ID.
+- **No central business database.** Chat and transfer history live only in local SQLite; nodes do not sync messages; schema upgrades go through `user_version` migrations.
+- **No home-grown crypto.** Application messages use libp2p secure channels (Noise/TLS over TCP, built into QUIC).
+- **Exit is fail-closed.** If a relay enables `-exit` with an empty allowlist, nobody can use that machine as a proxy; tokens are compared by digest and never logged in plaintext.
+- **Fully self-hosted relay.** No public relay is bundled; traffic only goes through the relay whose address you configure.
+- **High-risk features are off by default.** Proxy IPv6, LAN-origin SOCKS5, and unconfigured exit tokens behave exactly like older versions.
 
 ---
 
-## 架构
+## Architecture
 
 ```mermaid
 flowchart LR
-  UI[Vue 3 界面] -->|同源 /api/fst/*| API[internal/api]
-  UI <-->|Wails Events| EVT[事件总线]
-  API --> CORE[node / chat / transfer / proxy]
+  UI[Vue 3 UI] -->|same-origin /api/fst/*| API[internal/api]
+  UI <-->|Wails Events| EVT[event bus]
+  API --> CORE[node / chat / transfer / room]
+  API --> PROXY[internal/proxy]
   CORE --> DB[(SQLite)]
+  PROXY --> DB
   CORE <--> P2P[libp2p Host :8787]
-  P2P <-->|mDNS / DHT / circuit| PEER[其他 FST-Go 终端]
+  P2P <-->|mDNS / DHT / circuit| PEER[other FST-Go clients]
+  P2P -.->|GossipSub /fst/room| ROOM[same-group or same-LAN clients]
   P2P -.->|/fst/proxy/1.0.0| RELAY[fst-relay]
 ```
 
-桌面端启动后：打开数据目录 → 加载或生成身份 → 建 libp2p Host → 挂聊天与传输 → 按配置可选启动 TUN/SOCKS5 → Wails 窗口把 `front/dist` 嵌进去，`/api/*` 由 Go 处理。
+After the desktop app starts: open the data directory → migrate SQLite → load or create identity → build the libp2p Host → attach chat, transfer, and group chat → optionally start SOCKS5/TUN from config → the Wails window embeds `front/dist`, and `/api/*` is served by Go.
 
 ---
 
-## 模块
+## Modules
 
-| 路径 | 职责 |
+| Path | Responsibility |
 |---|---|
-| `main.go` / `instance.go` / `config.go` | 窗口、托盘、实例目录、`config.yaml` |
-| `internal/api` | `/api/fst/*`，`{code,message,data}` 信封 |
-| `internal/node` | Host、mDNS、DHT、中继预约、HELLO、在线状态 |
-| `internal/chat` | 聊天收发、落库、ACK |
-| `internal/transfer` | 文件 offer、流式拷贝、续传、校验、进度 |
-| `internal/store` | SQLite（WAL，纯 Go 驱动） |
-| `internal/proto` | 协议 ID、JSON 分帧 |
-| `internal/proxy` | 出口 Client、TUN、路由绕行、fake-IP DNS、SOCKS5 |
-| `internal/e2e` | 进程内多节点集成测试 |
-| `cmd/fst-relay` | 无头中继入口 |
-| `front/src/views/fst` | 设备 / 聊天 / 传输 / 设置 |
-| `front/src/store/modules/fst.ts` | 唯一的 Wails 事件订阅点 |
+| `main.go` / `instance.go` / `config.go` | Window, tray, instance directory, `config.yaml`, proxy assembly |
+| `internal/api` | `/api/fst/*`, the `{code,message,data}` envelope, read-only media endpoint |
+| `internal/node` | Host, mDNS, DHT, relay reservations, HELLO/directory, presence, group table, avatars |
+| `internal/chat` | Chat send/receive, kind/attach, recall, offline queue with exponential backoff, persistence, ACK |
+| `internal/room` | GossipSub group chat: automatic rooms, topic derivation, LAN direct-connection checks, local history |
+| `internal/transfer` | File/folder offers, automatic batching, streaming copy, resume, verification, rate limit, pre-hash, progress |
+| `internal/store` | SQLite (WAL, pure-Go driver), `user_version` migrations |
+| `internal/proto` | Protocol IDs, JSON framing, message structs |
+| `internal/proxy` | Exit client, TUN, route bypass, fake-IP DNS, SOCKS5, exit tokens, IPv6 |
+| `internal/e2e` | In-process multi-node integration tests |
+| `cmd/fst-relay` | Headless relay/exit entry point |
+| `front/src/views/fst` | Devices / Chat / Transfers / Settings |
+| `front/src/api/fst` + `types/api/fst.d.ts` | The single business HTTP wrapper and type contract |
+| `front/src/store/modules/fst.ts` | The single Wails event subscription point |
 
 ---
 
-## 协议
+## Protocols
 
-应用层协议定义在 `internal/proto`。底层连接由 libp2p 负责（多地址、加密、多路复用）。
+Application protocols are defined in `internal/proto`. The underlying transport is handled by libp2p (multiaddrs, encryption, multiplexing).
 
-| 协议 ID | 用途 | 帧格式 |
+| Protocol ID | Purpose | Frame format |
 |---|---|---|
-| `/fst/msg/1.0.0` | 控制与聊天：HELLO、CHAT、CHAT_ACK、FILE_OFFER/ACCEPT/REJECT/CANCEL、ERROR | uvarint 长度 + JSON，单帧 ≤ 1 MiB |
-| `/fst/file/1.0.0` | 单文件内容 | JSON `FileHeader` → 裸字节 `[offset,size)` → 32 字节 SHA-256 → JSON `FileResult` |
-| `/fst/proxy/1.0.0` | 经中继出网 | JSON `ProxyReq/Resp`；TCP 之后双向拷贝；UDP 之后为 2 字节大端长度前缀数据报 |
-| mDNS 服务名 `fst` | 局域网发现 | UDP 5353 多播 |
-| 私有 Kademlia `/fst` | 按 PeerID 查地址 | 仅 peer routing，不上公共 DHT |
+| `/fst/msg/1.0.0` | Control and chat: HELLO, CHAT, CHAT_ACK, CHAT_RECALL, FILE_OFFER/ACCEPT/REJECT/CANCEL, ERROR | uvarint length + JSON, single frame ≤ 1 MiB |
+| `/fst/file/1.0.0` | Single file content | JSON `FileHeader` → raw bytes `[offset,size)` → 32-byte SHA-256 → JSON `FileResult` |
+| `/fst/proxy/1.0.0` | Egress through a relay | JSON `ProxyReq/Resp`; bidirectional copy after TCP; 2-byte big-endian length-prefixed datagrams after UDP |
+| GossipSub `fst/room/1.0.0/<room>` | Group chat broadcast | Signed JSON `RoomMsg`; `lan` is the LAN room, `g-<hash>` is a group room (the hash does not reveal the key) |
+| mDNS service name `fst` | LAN discovery | UDP 5353 multicast |
+| Private Kademlia `/fst` | Address lookup by PeerID | Peer routing only, never joins the public DHT |
 
-HELLO 里：普通节点带已连对端的局域网 multiaddr（peer exchange）；**只有中继**填写 `Directory`（在线终端 PeerID），终端只采信自己配置的中继发来的目录。
+In HELLO: regular nodes carry LAN multiaddrs of already-connected peers (peer exchange); **only relays** fill in `Directory` (online client PeerIDs), and clients only trust directories from relays they configured; `group` is sent only to the configured relay, whose reply carries `group_name` / `group_expires` / `group_error`. Avatars carry only a small base64 image (≤16KB base64), never file bytes.
 
-UI 与 Go 之间 **不是** libp2p：同源 HTTP `/api/fst/*`（业务错误 HTTP 200 + `code: 400`）+ Wails 事件（`peer:*`、`chat:*`、`transfer:*`、`proxy:status` 等）。
+Private chat adds the `queued` state (pending send): when the peer is offline or times out, the message enters the local queue and is retried with backoff; `chat:ack` pushes state changes, and `POST /messages/{id}/retry` retries manually. Group messages are sent only over GossipSub and never enter `/fst/msg`; the LAN room only accepts messages whose original sender is a directly connected, non-circuit neighbor.
+
+`FileInfo` is `{id,name,size,rel_path?,sha256?}`; `rel_path` is used for folder transfers and must be sanitized by the receiver as untrusted input. `ProxyReq` is `{net,addr,port,family?,token?}`; `family` explicitly declares `ip4`/`ip6`, and the exit never guesses dual-stack.
+
+UI ↔ Go is **not** libp2p: same-origin HTTP `/api/fst/*` (business errors: HTTP 200 + `code: 400`) plus Wails events (`peer:*`, `chat:*`, `transfer:*`, `proxy:status`, etc.).
 
 ---
 
-## 开源组件
+## Open-source components
 
-直接依赖（版本以 `go.mod` / `front/package.json` 为准）：
+Direct dependencies (versions per `go.mod` / `front/package.json`):
 
-| 组件 | 用途 |
+| Component | Purpose |
 |---|---|
-| [go-libp2p](https://github.com/libp2p/go-libp2p) v0.50 | PeerID、mDNS、Noise/TLS、yamux、TCP+QUIC、AutoNATv2、DCUtR、Circuit Relay |
-| [go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht) | 私有 DHT |
-| [Wails v3](https://wails.io/) `v3.0.0-beta.29` | 桌面壳、托盘、原生对话框、拖放、嵌入前端 |
-| [tun2socks](https://github.com/xjasonlyu/tun2socks) v2.6 + [gVisor](https://gvisor.dev/) | TUN 用户态协议栈 |
-| [golang.zx2c4.com/wireguard](https://git.zx2c4.com/wireguard-go) / [Wintun](https://www.wintun.net/) | Windows TUN 网卡（需官方签名 `wintun.dll`） |
-| [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) | 纯 Go SQLite，运行时无 CGO |
-| [yaml.v3](https://github.com/go.yaml/yaml) | `config.yaml` |
-| Vue 3.5、Vite 8、Element Plus、Tailwind CSS v4、Pinia、vue-router、axios、wangEditor、DOMPurify | 界面与构建 |
+| [go-libp2p](https://github.com/libp2p/go-libp2p) v0.50 | PeerID, mDNS, Noise/TLS, yamux, TCP+QUIC, AutoNATv2, DCUtR, Circuit Relay |
+| [go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht) v0.42 | Private DHT |
+| [go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub) v0.18 | GossipSub group chat broadcast |
+| [Wails v3](https://wails.io/) `v3.0.0-beta.29` | Desktop shell, tray, native dialogs, drag and drop, embedded frontend |
+| [tun2socks](https://github.com/xjasonlyu/tun2socks) v2.6 + [gVisor](https://gvisor.dev/) | User-space TUN stack |
+| [golang.zx2c4.com/wireguard](https://git.zx2c4.com/wireguard-go) / [Wintun](https://www.wintun.net/) | Windows TUN adapter (requires the officially signed `wintun.dll`) |
+| [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) v1.60 | Pure-Go SQLite, no CGO at runtime |
+| [yaml.v3](https://github.com/go.yaml/yaml) v3.0.5 | `config.yaml` |
+| Vue 3.5, Vite 8, Element Plus 2.13, Tailwind CSS v4, Pinia, vue-router, axios, wangEditor, DOMPurify, Iconify | UI, build, and offline icons |
 
-第三方库保留各自许可证。本仓库源码以 AGPLv3 覆盖。
+Third-party libraries keep their own licenses. This repository's source is covered by MIT.
 
 ---
 
-## 运行环境
+## Requirements
 
-**桌面端**
+**Desktop**
 
 - Windows 10/11 x64
-- [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 通常已带）
-- 局域网：防火墙放行 **TCP/UDP 8787**、**UDP 5353**（mDNS）；关闭路由器 AP/客户端隔离
-- 跨网络：再放行到中继的 8787，并在设置里打开「允许跨网络」
-- TUN 代理：管理员权限 + exe 旁的 `wintun.dll`
+- [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (usually preinstalled on Windows 11)
+- LAN: allow **TCP/UDP 8787** and **UDP 5353** (mDNS) through the firewall; disable AP/client isolation on the router
+- Cross-network: also allow 8787 to the relay, and enable "Allow cross-network" in settings
+- TUN proxy: administrator rights + `wintun.dll` next to the exe
+- SOCKS5 inbound: no administrator rights, no `wintun.dll`; listens on loopback by default
 
-**中继**
+**Relay**
 
-- 公网 IPv4 的 Linux（当前 deb 为 amd64）
-- 安全组 / `ufw` 放行 **TCP 8787 与 UDP 8787**
+- Linux with a public IPv4 (the current deb is amd64)
+- Security group / `ufw`: allow **TCP 8787 and UDP 8787**
+- Exit mode also needs outbound TCP/UDP from the relay to the target
 
 ---
 
-## 编译桌面端
+## Building the desktop app
 
-需要：Go 1.26+、Node 22+、[pnpm](https://pnpm.io/)、[Wails v3 CLI](https://v3.wails.io/)（与 `go.mod` 中 Wails 版本一致）。
+Requirements: Go 1.26+, Node 22+, [pnpm](https://pnpm.io/), [Wails v3 CLI](https://v3.wails.io/) (matching the Wails version in `go.mod`).
 
 ```powershell
 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.29
@@ -186,20 +208,20 @@ cd front
 pnpm install
 cd ..
 
-# 覆盖 bin\fst.exe 前先结束正在运行的进程
+# stop the running process before overwriting bin\fst.exe
 Stop-Process -Name fst -ErrorAction SilentlyContinue
 wails3 build
 ```
 
-产物：`bin/fst.exe`，以及从 `build/windows/wintun/` 复制过去的 `bin/wintun.dll`。前端已经嵌进 exe，分发不必带 `front/`。
+Artifacts: `bin/fst.exe` plus `bin/wintun.dll` copied from `build/windows/wintun/`. The frontend is embedded in the exe, so you do not need to ship `front/`.
 
-开发热重载（不写 `bin/`）：
+Development with hot reload (does not write `bin/`):
 
 ```powershell
 wails3 dev
 ```
 
-同机开第二个实例（独立身份与端口）：
+Run a second instance on the same machine (separate identity and port):
 
 ```powershell
 $env:FST_DATA_DIR = "D:\fst-dev-2"
@@ -208,25 +230,25 @@ $env:FST_PORT = "8788"
 
 ---
 
-## 打包与分发
+## Packaging and distribution
 
-把 FST-Go 拷到另一台 Windows，**只需要 `bin/fst.exe`**（若要用 TUN 代理，再带上同目录的 `wintun.dll`）。不要拷 `%APPDATA%\FST\`：那里的 `identity.key` 是设备身份，两台机器共用会 PeerID 冲突。
+To run FST-Go on another Windows machine you only need `bin/fst.exe` (add `wintun.dll` from the same directory if you want the TUN proxy). Do not copy `%APPDATA%\FST\`: the `identity.key` there is the device identity, and sharing it between two machines that are online at the same time causes a PeerID conflict.
 
-可选安装包（需本机安装 [NSIS](https://nsis.sourceforge.io/)）：
+Optional installer (requires [NSIS](https://nsis.sourceforge.io/) on the build machine):
 
 ```powershell
 wails3 package
 ```
 
-会把 WebView2 引导程序打进安装包。没有 NSIS 时，直接分发 exe 即可。
+This bundles the WebView2 bootstrapper. Without NSIS, just distribute the exe.
 
 ---
 
-## 中继：编译、部署与设置
+## Relay: build, deploy and configure
 
-中继 **没有界面、不做 mDNS**。它做三件事：Circuit Relay（NAT 后的两台终端互相转发）、私有 DHT、把连上它的 FST-Go 终端 PeerID 写进 HELLO 目录。加上 `-exit` 后，还可以当出网出口。
+The relay has **no UI and no mDNS**. It does three things: Circuit Relay (forwarding between two NATed clients), private DHT, and writing the PeerIDs of connected FST-Go clients into the HELLO directory. With `-exit` it can also act as an egress.
 
-### 在 Windows 上交叉编译并打 deb
+### Cross-compiling and building a deb on Windows
 
 ```powershell
 $env:GOOS = "linux"
@@ -239,9 +261,9 @@ $env:Path += ";$(go env GOPATH)\bin"
 wails3 tool package -name fst-relay -format deb -config ./build/relay/nfpm.yaml -out ./bin
 ```
 
-得到例如 `bin/fst-relay_0.1.3_amd64.deb`。
+This produces something like `bin/fst-relay_0.1.3_amd64.deb`.
 
-### 在 Linux 上安装
+### Installing on Linux
 
 ```bash
 sudo ufw allow 8787/tcp
@@ -251,135 +273,197 @@ sudo systemctl status fst-relay
 journalctl -u fst-relay -e
 ```
 
-deb 会把二进制装到 `/usr/bin/fst-relay`，单元文件到 `/lib/systemd/system/fst-relay.service`，postinstall 会 `enable --now`。数据目录默认 `/var/lib/fst-relay`（`identity.key` 决定 PeerID，换目录等于换身份）。
+The deb installs the binary to `/usr/bin/fst-relay` and the unit file to `/lib/systemd/system/fst-relay.service`; postinstall runs `enable --now`. The data directory defaults to `/var/lib/fst-relay` (`identity.key` determines the PeerID; a different directory means a different identity).
 
-启动日志会打印应填进客户端的地址：
+The startup log prints the address to enter in clients:
 
 ```text
-/ip4/<服务器公网IP>/tcp/8787/p2p/<PeerID>
+/ip4/<SERVER_PUBLIC_IP>/tcp/8787/p2p/<PeerID>
 ```
 
-### 命令行参数
+### Command-line flags
 
-| 参数 | 默认 | 含义 |
+| Flag | Default | Meaning |
 |---|---|---|
-| `-data` | `/var/lib/fst-relay` | 数据目录（身份与库） |
-| `-port` | `8787` | TCP + UDP(QUIC) 监听端口 |
-| `-name` | `fst-relay` | 终端设备列表里显示的名字 |
-| `-exit` | 关 | 开启出网出口（必须配白名单才有人能用） |
-| `-exit-allow` | 空 | 文件：每行一个终端 PeerID；空文件或省略 = 拒绝所有人 |
+| `-data` | `/var/lib/fst-relay` | Data directory (identity and database) |
+| `-port` | `8787` | TCP + UDP (QUIC) listen port |
+| `-name` | `fst-relay` | Name shown in client device lists |
+| `-group` | empty | Single group key: only clients presenting the same key are introduced to each other |
+| `-group-file` | empty | Group table file, one `name:key[:expiry]` per line; mutually exclusive with `-group`; hot-reloaded within 10 seconds, no relay restart needed |
+| `-group-max-terminals` | `0` | Soft cap on online clients per group; over the cap only directory/arrival notifications stop, connections are not dropped |
+| `-exit` | off | Enable the egress (also requires `-exit-allow` listing clients, otherwise nobody can use it) |
+| `-exit-allow` | empty | File: one client PeerID per line; an empty file or omission = deny everyone (fail-closed) |
+| `-exit-token` | empty | Exit token file, one `token[:expiry]` per line; expiry accepts RFC3339 or Unix seconds |
+| `-exit-group` | empty | Only clients in this group may use the exit; same group is exempt from tokens |
+| `-exit-group-slots` | `0` | Per-group concurrent exit session cap; 0 means only the global 1024 limit applies |
 
-改端口等参数用 systemd drop-in（重装 deb 不会冲掉）：
+Logs only print the effective group/token counts and PeerIDs, never keys or tokens in plaintext.
+
+Change ports and other flags with a systemd drop-in (reinstalling the deb will not overwrite it):
 
 ```bash
 sudo systemctl edit fst-relay
 ```
 
-只在编辑区写入：
+Write only in the editor section:
 
 ```ini
 [Service]
 ExecStart=
-ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787 -exit -exit-allow /etc/fst-relay/allow.txt
+ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787 -group-file /etc/fst-relay/groups.txt -exit -exit-allow /etc/fst-relay/allow.txt -exit-token /etc/fst-relay/tokens.txt
 ```
 
 ```bash
 sudo mkdir -p /etc/fst-relay
 sudo chmod 700 /etc/fst-relay
-# allow.txt：每行一个终端 PeerID（设置页可复制）
+# allow.txt: one client PeerID per line (copy it from the settings page)
+# groups.txt: one name:key[:expiry] per line, e.g. office:change-me:2027-01-01T00:00:00Z
+# tokens.txt: one token[:expiry] per line; clients enter the same value as the "exit token" in settings
 sudo systemctl restart fst-relay
 ```
 
-没有出口需求时，保持默认 `ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787` 即可，聊天和传文件仍然走电路中继。
+Without egress needs, keep the default `ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787`; chat and file transfer still use the circuit relay.
 
 ---
 
-## 终端如何连上中继
+## Relay groups and exit authorization
 
-1. 设置 → **允许跨网络**，中继地址填一行 `/ip4/<公网IP>/tcp/8787/p2p/<PeerID>`，保存后 **重启 FST-Go**。
-2. 两台终端都连上同一中继后，设备页会出现中继卡片；目录下发成功则对方也会出现在「在线设备」。
-3. 若列表里暂时只有中继：用「添加设备」→ 仅 PeerID（DHT）或 PeerID+中继。
-4. 聊天点卡片「聊天」；文件点「发送文件」或把文件拖到卡片上。卡片显示「中继」表示正在走服务器转发，「直连」表示已经打洞或本来就能直连。
+**Group isolation** is for multiple batches of clients behind one relay:
 
-`config.yaml` 与 exe 放在同一目录（开发时也可放在项目根）。设置页保存会改写该文件，**跨网络与代理相关项重启后生效**。
+- Clients enter a string key in settings or `config.yaml: group`; it is only sent to the configured relay.
+- The relay validates with `-group` (single group) or `-group-file` (multi-group table); only same-group clients introduce each other, different groups are invisible to each other.
+- Group table lines are `name:key[:expiry]`; after expiry the relay stops publishing the directory and arrival notifications, and returns `group_error` in the HELLO reply; the settings page shows "group expired / invalid key".
+- **Hot reload**: after editing `-group-file` the relay swaps the table within 10 seconds without a restart; deleting a group, rotating a key, or expiry immediately revokes that group's directory/exit rights and re-sends HELLO. Saving a new `group` on the client also reconnects to the relay immediately.
+- `-group-max-terminals` is a soft limit: over the limit the relay only stops sending directories and arrival notifications, it does not drop connections.
+- Without groups configured, behavior is identical to older versions.
+
+**Exit authorization** intersects three layers (check order: allowlist → group → token):
+
+1. `-exit-allow`: PeerID allowlist; `fst-relay` always enables it, and an empty allowlist means fail-closed.
+2. `-exit-group`: only the specified group may use the exit; the same group is exempt from tokens.
+3. `-exit-token`: clients send it in `proxy.token`; the relay compares in constant time and supports multiple tokens with expiry.
+
+`-exit-group-slots` limits per-group concurrency; global concurrency is 1024. `-exit` requires a non-empty `-exit-allow`, otherwise nobody can use the exit.
+
+Boundaries: grouping is a shared-key model with no online rotation/revocation API; after changing the table the relay must be restarted, and clients must be restarted after config changes. The relay can still see encrypted streams; end-to-end security is provided by libp2p.
+
+---
+
+## How a client connects to a relay
+
+1. Settings → **Allow cross-network**, enter one relay address per line `/ip4/<PUBLIC_IP>/tcp/8787/p2p/<PeerID>`, save, then **restart FST-Go**.
+2. Once both clients are connected to the same relay, the device page shows the relay card; if the directory is published successfully, the peer also appears under "Online".
+3. If only the relay is listed for now: use "Add device" → PeerID only (DHT) or PeerID + relay.
+4. Click "Chat" on the card to chat; click "Send file" or drag files onto the card to transfer. The card shows "Relay" while traffic is forwarded by the server, and "Direct" after hole punching or when a direct connection already exists.
+
+`config.yaml` lives next to the exe (during development it may also be in the project root). Saving in the settings page rewrites this file: **the group key takes effect immediately by reconnecting to the relay**; other cross-network and proxy items still require a restart.
 
 ```yaml
 enable_relay: true
 relays:
   - /ip4/<PUBLIC_IP>/tcp/8787/p2p/<RELAY_PEER_ID>
+group: ""                # relay group key; empty = no grouping
 proxy:
   enable: false
-  mode: split          # split | global
+  mode: split            # split | global
   exit: /ip4/<PUBLIC_IP>/tcp/8787/p2p/<RELAY_PEER_ID>
   routes:
     - 93.184.216.0/24
   domains:
     - example.com
+  token: ""              # exit token for relay -exit-token
+  ipv6: false            # experimental: TUN IPv6 stack + fake AAAA
+  socks_enable: true     # local SOCKS5 inbound (on by default)
+  socks_user: ""
+  socks_pass: ""
+  socks_allow: []        # source CIDRs; non-empty requires credentials
+  socks_max_conn: 0
+  socks_max_per_ip: 0
 ```
 
 ---
 
-## 网络代理（可选）
+## Network proxy (optional)
 
-经 **同一条** `/fst/proxy/1.0.0` 流到 `fst-relay` 出网，不另开公网端口。
+Traffic goes out through `fst-relay` over the **same** `/fst/proxy/1.0.0` stream; no extra public port is opened. The proxy requires cross-network to be enabled and a relay configured as the exit.
 
-- **分流 `split`**：只把列出的 IPv4 CIDR 和/或域名（fake-IP `198.18.0.0/15`，DNS `198.18.0.2`）送进隧道。
-- **全局 `global`**：默认路由进 TUN；局域网、系统 DNS、常用公共 DNS、中继 `/32` 走原网关，避免把内网和解析一起送进隧道。
-- 协议：IPv4 TCP 与 UDP。AAAA 回 NODATA，逼流量走 IPv4。
-- 出口拒绝环回、私网、链路本地；仅白名单里的终端 PeerID 可拨出口。
-- TUN 需要管理员 + `wintun.dll`。代理开启时还会在 `127.0.0.1` 随机端口起 SOCKS5（CONNECT + UDP ASSOCIATE），供浏览器 `socks5h://` 使用，不强制走 TUN。
+- **Split `split`**: only the listed CIDRs and/or domains (fake-IP `198.18.0.0/15`, DNS `198.18.0.2`) enter the tunnel; with domain rules the `/32` routes of system/public DNS also enter the TUN, and unmatched domains are resolved at the exit.
+- **Global `global`**: the default route enters the TUN; the LAN, system DNS, common public DNS, and the exit relay IP use the original gateway, so the intranet and resolution do not go through the tunnel.
+- **Transport**: IPv4 TCP + UDP; with `proxy.ipv6=true` an IPv6 exit (AAAA, IPv6 literals, `tcp6`/`udp6`) and a TUN v6 stack are added, falling back to IPv4 on failure.
+- **Exit security**: loopback, private, link-local, ULA, and multicast targets are rejected; the allowlist, token, and group take part in authorization whenever configured.
+- **SOCKS5 inbound**: `127.0.0.1:20300` (falls back to a random port when occupied), CONNECT + UDP ASSOCIATE, usable as `socks5h://` in browsers without forcing TUN. Optional RFC1929 credentials, source CIDRs, and concurrency caps; configuring a source allowlist without a password refuses to start the hardened version (falls back to loopback unauthenticated with a warning).
+- **TUN**: requires administrator + `wintun.dll`; with `proxy.ipv6=true` the interface adds `fdfe:1::1/64` and fake AAAA uses `fdfe:2::/64`.
 
-Windows 上以管理员启动 `fst.exe`。中继必须 `-exit` 且 `allow.txt` 含本机 PeerID，否则拨不出去。失败原因见设置页代理状态，以及 `%APPDATA%\FST\fst.log` / `journalctl -u fst-relay`。
+On Windows, start `fst.exe` as administrator (not needed when using SOCKS5 only). The relay must run with `-exit` and pass allowlist/token/group checks, otherwise dialing out fails. Failure reasons appear in the proxy status on the settings page and in `%APPDATA%\FST\fst.log` / `journalctl -u fst-relay`.
 
----
-
-## 配置与数据目录
-
-| 位置 | 内容 |
-|---|---|
-| `%APPDATA%\FST\identity.key` | 设备身份，不要在同时在线的两台机器间共用 |
-| `%APPDATA%\FST\fst.db` | 设备、聊天、传输、部分设置（WAL） |
-| `%APPDATA%\FST\fst.log` | 日志 |
-| `config.yaml`（exe 旁或项目根） | 跨网络开关、中继列表、代理 |
-| 默认下载目录 | `%USERPROFILE%\Downloads\FST` |
-
-整体搬家：退出 FST-Go 后拷贝整个 `%APPDATA%\FST\`。只是多装一台：只拷 exe，让它自己生成新身份。
-
-环境变量：`FST_DATA_DIR`、`FST_PORT`、`FST_WAN=1`（强制开跨网络）。
-
----
-
-## 开发与测试
+Verification:
 
 ```powershell
-go test ./internal/...
+nslookup www.google.com 8.8.8.8          # global mode should return 198.18.x.x (hijacked)
+curl.exe -x socks5h://127.0.0.1:20300 -I --ssl-no-revoke https://www.google.com
+curl.exe -s -o NUL -w "%{http_code}" --ssl-no-revoke https://www.qq.com   # through TUN
+```
+
+---
+
+## Configuration and data directory
+
+| Location | Content |
+|---|---|
+| `%APPDATA%\FST\identity.key` | Device identity; never share it between two machines that are online at the same time |
+| `%APPDATA%\FST\fst.db` | Devices, chat, transfers, some settings (WAL) |
+| `%APPDATA%\FST\fst.log` | Logs |
+| `config.yaml` (next to the exe or in the project root) | Cross-network switch, relay list, groups, proxy and SOCKS5 |
+| Default download directory | `%USERPROFILE%\Downloads\FST` |
+
+SQLite uses `PRAGMA user_version` for versioned migrations (currently v6: `transfers.rel_path`, message `kind/recalled/attach/attempts/next_retry`, `peers.avatar`, `room_messages`/`rooms`); upgrades need no manual schema changes.
+
+Full migration: quit FST-Go and copy the whole `%APPDATA%\FST\`. To add another machine, copy only the exe and let it generate a new identity.
+
+Environment variables: `FST_DATA_DIR`, `FST_PORT`.
+
+---
+
+## Development and testing
+
+```powershell
+go test . ./internal/...
 cd front
 npx vue-tsc --noEmit
 ```
 
-协作约定见根目录 [AGENTS.md](AGENTS.md)。模块与缺口的详细说明见 [docs/开发文档.md](docs/开发文档.md)，架构见 [docs/项目架构分析报告.md](docs/项目架构分析报告.md)，中继排障见 [部署.md](部署.md)。
+Proxy tests mock all dialing and never touch real network interfaces; real dual-stack IPv6, NAT hole punching, and Windows TUN need manual regression on real hardware.
+
+Collaboration conventions are in [AGENTS.md](AGENTS.md). Modules, protocols, and gaps are documented in [docs/开发文档.md](docs/开发文档.md); architecture and document review conclusions in [docs/项目架构分析报告.md](docs/项目架构分析报告.md); the evolution history in [docs/开发计划.md](docs/开发计划.md); the proxy failure analysis in [docs/代理故障分析与改进报告.md](docs/代理故障分析与改进报告.md); manual regression steps on real networks in [docs/回归清单.md](docs/回归清单.md); relay troubleshooting in [部署.md](部署.md).
 
 ---
 
-## 现状与限制
+## Status and limitations
 
-- 桌面端目前按 Windows 构建；macOS / Linux 桌面未作为发布目标（Linux 走无头中继）。
-- 代理仅 IPv4；无 IPv6 目标、无代理链、无出口鉴权（只有 PeerID 白名单）。
-- 同一中继上的终端默认互相可见，没有分组/令牌。
-- 无群聊、无离线消息、不传文件夹。
-- 对端离线时聊天不会暂存重投。
+- **Due to limited personal development resources**, the desktop app is currently built for Windows only; macOS / Linux desktop is not a release target (Linux is served by the headless relay). The Windows installer requires NSIS, and the main distribution is currently a bare exe.
+- Proxy IPv6 is still experimental and needs manual regression in a real dual-stack environment; global IPv6 mode relies on the system default v6 route for bypass; proxy chaining is not supported.
+- SOCKS5 hardening is off by default: without credentials it remains loopback-only and unauthenticated, so any local process can use it; the source allowlist and concurrency caps must be enabled manually.
+- Relay groups are shared keys and support multiple groups, expiry, and soft caps, but there is no online rotation or revocation API; the relay must be restarted after changing the table.
+- The transfer rate limit is a whole-process total and cannot be set per peer/direction; pre-hashing reads the source file once more.
+- Hash skipping only applies when `prehash` is enabled; skipped symlinks/special files are reported at send time but not persisted.
+- Group chat supports text only, no images/files; history is local only, new members cannot see messages from before they joined, and there is no offline group-message delivery or member management.
+- Offline messages retry automatically at most 20 times (backoff capped at 10 minutes), then become failed and need a manual retry; messages are only delivered after the peer comes online, with no server-side staging.
+- Group chat rooms are derived automatically from "same LAN / same relay group" and cannot be created or invited manually; the LAN room relies on direct connections, and across networks the relay is only suitable for small text messages.
+- The chat recall window is fixed at 2 minutes and only your own messages can be recalled; avatars support PNG/JPEG only, original ≤12KB (base64 ≤16KB), with no cropping or compression.
+- Logging is a single file without rotation, crash reporting, or RTT/traffic statistics.
 
 ---
 
-## ⚠️ 免责声明
-本软件仅供学习与研究使用。请遵守当地法律法规。使用本软件所产生的任何后果由使用者自行承担。
+## ⚠️ Disclaimer
+
+This software is for learning and research only. Follow local laws and regulations. Any consequences of using this software are borne by the user.
 
 ---
 
-## 许可证
+## License
 
-Copyright (C) 2026 FST-Go contributors.
+Copyright (c) 2026 FST-Go contributors
 
-本程序是自由软件：你可以在 [GNU Affero General Public License v3.0](LICENSE) 的条款下再分发和/或修改它。本程序仅供学习参考之用，请勿用于非法用途，希望对你有帮助，但不提供任何担保。
+Released under the [MIT License](LICENSE): free to use, modify, distribute, and use commercially, provided the copyright and license notices are retained. This program is for learning and reference only; do not use it for illegal purposes. It is meant to be helpful but comes with no warranty.
 
-若你修改后通过网络提供服务（例如公网运行改过的 `fst-relay`），AGPLv3 要求你向使用该服务的用户提供对应完整源码。依赖库仍按其原许可证使用。
+Dependencies remain under their own licenses.

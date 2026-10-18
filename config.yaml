@@ -1,0 +1,16 @@
+# FST 跨网络配置（开发用；打包后请放在 fst.exe 同目录）
+# 设置页「跨网络」保存时会改写本文件；修改后需重启生效。
+
+# 等价于设置页的「允许跨网络」开关。关闭时只做局域网 mDNS 发现。
+#enable_relay: false
+#relays:
+#    - /ip4/127.0.0.1/tcp/8787/p2p/12D3KooWESiAeSLF3FbWArr1jvWw3HAK6aDBPpD9CKByQ2MrSeQo
+# 经中继出网（IPv4 TCP/UDP）。需要管理员权限、wintun.dll，以及中继开启 -exit。
+# proxy:
+#   enable: false
+#   mode: split          # split | global
+#   exit: /ip4/127.0.0.1/tcp/8787/p2p/12D3KooWESiAeSLF3FbWArr1jvWw3HAK6aDBPpD9CKByQ2MrSeQo
+#   routes:
+#     - 93.184.216.0/24
+#   domains:
+#     - google.com

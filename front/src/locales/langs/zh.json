@@ -1,0 +1,544 @@
+{
+  "httpMsg": {
+    "unauthorized": "未授权访问，请重新登录",
+    "forbidden": "禁止访问该资源",
+    "notFound": "请求的资源不存在",
+    "methodNotAllowed": "请求方法不允许",
+    "requestTimeout": "请求超时，请稍后重试",
+    "internalServerError": "服务器内部错误，请稍后重试",
+    "badGateway": "网关错误，请稍后重试",
+    "serviceUnavailable": "服务暂时不可用，请稍后重试",
+    "gatewayTimeout": "网关超时，请稍后重试",
+    "requestCancelled": "请求已取消",
+    "networkError": "网络连接异常，请检查网络连接",
+    "requestFailed": "请求失败",
+    "requestConfigError": "请求配置错误"
+  },
+  "topBar": {
+    "search": {
+      "title": "搜索"
+    },
+    "user": {
+      "userCenter": "个人中心",
+      "docs": "使用文档",
+      "github": "Github",
+      "lockScreen": "锁定屏幕",
+      "logout": "退出登录"
+    },
+    "guide": {
+      "title": "点击这里查看",
+      "theme": "主题风格",
+      "menu": "开启顶栏菜单",
+      "description": "等更多配置"
+    }
+  },
+  "common": {
+    "tips": "提示",
+    "cancel": "取消",
+    "confirm": "确定",
+    "logOutTips": "您是否要退出登录?"
+  },
+  "search": {
+    "placeholder": "搜索页面",
+    "historyTitle": "搜索历史",
+    "switchKeydown": "切换",
+    "selectKeydown": "选择",
+    "exitKeydown": "关闭"
+  },
+  "setting": {
+    "menuType": {
+      "title": "菜单布局",
+      "list": [
+        "垂直",
+        "水平",
+        "混合",
+        "双列"
+      ]
+    },
+    "theme": {
+      "title": "主题风格",
+      "list": [
+        "浅色",
+        "深色",
+        "系统"
+      ]
+    },
+    "menu": {
+      "title": "菜单风格"
+    },
+    "color": {
+      "title": "系统主题色"
+    },
+    "box": {
+      "title": "盒子样式",
+      "list": [
+        "边框",
+        "阴影"
+      ]
+    },
+    "container": {
+      "title": "容器宽度",
+      "list": [
+        "铺满",
+        "定宽"
+      ]
+    },
+    "basics": {
+      "title": "基础配置",
+      "list": {
+        "multiTab": "开启多标签栏",
+        "accordion": "侧边栏开启手风琴模式",
+        "collapseSidebar": "显示折叠侧边栏按钮",
+        "fastEnter": "显示快速入口",
+        "reloadPage": "显示重载页面按钮",
+        "breadcrumb": "显示全局面包屑导航",
+        "language": "显示多语言选择",
+        "progressBar": "显示顶部进度条",
+        "weakMode": "色弱模式",
+        "watermark": "全局水印",
+        "menuWidth": "菜单宽度",
+        "tabStyle": "标签页风格",
+        "pageTransition": "页面切换动画",
+        "borderRadius": "自定义圆角"
+      }
+    },
+    "tabStyle": {
+      "default": "默认",
+      "card": "卡片",
+      "google": "谷歌"
+    },
+    "transition": {
+      "list": {
+        "none": "无动画",
+        "fade": "淡入淡出",
+        "slideLeft": "左侧滑入",
+        "slideBottom": "下方滑入",
+        "slideTop": "上方滑入"
+      }
+    },
+    "actions": {
+      "resetConfig": "重置配置",
+      "copyConfig": "复制配置",
+      "copySuccess": "配置已复制到剪贴板，可粘贴到 src/config/setting.ts 文件中",
+      "copyFailed": "复制失败，请重试",
+      "resetFailed": "重置失败，请刷新页面后重试"
+    }
+  },
+  "notice": {
+    "title": "通知",
+    "btnRead": "标为已读",
+    "bar": [
+      "通知",
+      "消息",
+      "代办"
+    ],
+    "text": [
+      "暂无"
+    ],
+    "viewAll": "查看全部"
+  },
+  "worktab": {
+    "btn": {
+      "refresh": "刷新",
+      "fixed": "固定",
+      "unfixed": "取消固定",
+      "closeLeft": "关闭左侧",
+      "closeRight": "关闭右侧",
+      "closeOther": "关闭其他",
+      "closeAll": "关闭全部"
+    }
+  },
+  "login": {
+    "leftView": {
+      "title": "一款兼具设计美学与高效开发的后台系统",
+      "subTitle": "美观实用的界面，经过视觉优化，确保卓越的用户体验"
+    },
+    "title": "欢迎回来",
+    "subTitle": "输入您的账号和密码登录",
+    "roles": {
+      "super": "超级管理员",
+      "admin": "管理员",
+      "user": "普通用户"
+    },
+    "placeholder": {
+      "username": "请输入账号",
+      "password": "请输入密码",
+      "code": "请输入验证码",
+      "slider": "请拖动滑块完成验证"
+    },
+    "sliderText": "按住滑块拖动",
+    "sliderSuccessText": "验证成功",
+    "rememberPwd": "记住密码",
+    "forgetPwd": "忘记密码",
+    "btnText": "登录",
+    "noAccount": "还没有账号？",
+    "register": "注册",
+    "success": {
+      "title": "登录成功",
+      "message": "欢迎回来"
+    }
+  },
+  "forgetPassword": {
+    "title": "忘记密码？",
+    "subTitle": "输入您的电子邮件来重置您的密码",
+    "placeholder": "请输入您的电子邮件",
+    "submitBtnText": "提交",
+    "backBtnText": "返回"
+  },
+  "register": {
+    "title": "创建账号",
+    "subTitle": "欢迎加入我们，请填写以下信息完成注册",
+    "placeholder": {
+      "username": "请输入账号",
+      "password": "请输入密码",
+      "confirmPassword": "请再次输入密码"
+    },
+    "rule": {
+      "confirmPasswordRequired": "请再次输入密码",
+      "passwordMismatch": "两次输入密码不一致!",
+      "usernameLength": "长度在 3 到 20 个字符",
+      "passwordLength": "密码长度不能小于6位",
+      "agreementRequired": "请同意隐私协议"
+    },
+    "agreeText": "我同意",
+    "privacyPolicy": "《隐私政策》",
+    "submitBtnText": "注册",
+    "hasAccount": "已有账号？",
+    "toLogin": "去登录"
+  },
+  "lockScreen": {
+    "pwdError": "密码错误",
+    "lock": {
+      "inputPlaceholder": "请输入锁屏密码",
+      "btnText": "锁定"
+    },
+    "unlock": {
+      "inputPlaceholder": "请输入解锁密码",
+      "btnText": "解锁",
+      "backBtnText": "返回登录"
+    }
+  },
+  "greeting": {
+    "dawn": "凌晨了！",
+    "morning": "上午好！",
+    "afternoon": "下午好！",
+    "evening": "晚上好！"
+  },
+  "exceptionPage": {
+    "403": "抱歉，您无权访问该页面",
+    "404": "抱歉，您访问的页面不存在",
+    "500": "抱歉，服务器出错了",
+    "gohome": "返回首页"
+  },
+  "menus": {
+    "login": {
+      "title": "登录"
+    },
+    "register": {
+      "title": "注册"
+    },
+    "forgetPassword": {
+      "title": "忘记密码"
+    },
+    "outside": {
+      "title": "内嵌页面"
+    },
+    "dashboard": {
+      "title": "仪表盘",
+      "console": "工作台"
+    },
+    "result": {
+      "title": "结果页面",
+      "success": "成功页",
+      "fail": "失败页"
+    },
+    "exception": {
+      "title": "异常页面",
+      "forbidden": "403",
+      "notFound": "404",
+      "serverError": "500"
+    },
+    "system": {
+      "title": "系统管理",
+      "user": "用户管理",
+      "role": "角色管理",
+      "tenant": "租户管理",
+      "userCenter": "个人中心",
+      "menu": "菜单管理"
+    },
+    "fst": {
+      "device": "设备",
+      "chat": "聊天",
+      "transfer": "传输",
+      "settings": "设置"
+    }
+  },
+  "table": {
+    "form": {
+      "reset": "重置",
+      "submit": "提交"
+    },
+    "searchBar": {
+      "reset": "重置",
+      "search": "查询",
+      "expand": "展开",
+      "collapse": "收起",
+      "searchInputPlaceholder": "请输入",
+      "searchSelectPlaceholder": "请选择"
+    },
+    "selection": "选择",
+    "sizeOptions": {
+      "small": "紧凑",
+      "default": "默认",
+      "large": "宽松"
+    },
+    "column": {
+      "selection": "勾选",
+      "expand": "展开",
+      "index": "序号"
+    },
+    "zebra": "斑马纹",
+    "border": "边框",
+    "headerBackground": "表头背景"
+  },
+  "fst": {
+    "common": {
+      "copy": "复制",
+      "copied": "已复制",
+      "save": "保存",
+      "saveSettings": "保存设置",
+      "cancel": "取消",
+      "remove": "移除",
+      "connect": "连接",
+      "search": "查询",
+      "reset": "重置",
+      "pick": "选择…",
+      "dash": "—",
+      "restartHint": "重启后生效"
+    },
+    "feature": {
+      "title": "高级网络功能",
+      "unlocked": "相关功能已经完全解锁",
+      "locked": "相关功能已经屏蔽",
+      "restart": "重启 FST 后生效",
+      "lockConfirm": "屏蔽跨网络与代理设置？",
+      "blocked": "当前无法屏蔽该功能"
+    },
+    "device": {
+      "self": "本机",
+      "peerId": "PeerID",
+      "addDevice": "添加设备",
+      "tabOnline": "在线设备",
+      "tabRelay": "中继设备",
+      "tabOffline": "离线设备",
+      "emptyOnline": "暂无在线终端…局域网会自动发现，跨网络需双方连同一中继",
+      "emptyRelay": "暂无中继服务器（在设置中配置并开启跨网络）",
+      "emptyOffline": "暂无离线设备",
+      "direct": "直连",
+      "relay": "中继",
+      "directTip": "直连",
+      "relayTip": "经中继转发，速度/数据量受限，会尝试打洞升级为直连",
+      "trust": "信任",
+      "trustTip": "受信任设备：收到文件自动接收",
+      "removeDevice": "移除设备",
+      "removeTitle": "移除离线设备",
+      "removeConfirm": "确定移除离线设备“{name}”？其聊天记录和传输历史也会从本机数据库删除，已接收的文件不会删除。",
+      "removed": "离线设备已移除",
+      "operations": "操作",
+      "sendFile": "发送文件",
+      "sendFolder": "发送文件夹",
+      "chat": "聊天",
+      "dropHint": "可将文件拖放到此卡片",
+      "online": "在线",
+      "offlineSince": "离线 {time}",
+      "justNow": "刚刚",
+      "minutesAgo": "{n} 分钟前",
+      "hoursAgo": "{n} 小时前",
+      "daysAgo": "{n} 天前",
+      "requestSent": "已发出请求，等待对方确认",
+      "skippedHint": "已跳过 {n} 个符号链接/特殊文件",
+      "batchesSent": "文件较多，已拆成 {n} 个批次（共 {files} 个文件）",
+      "addTitle": "添加设备",
+      "modeAddr": "完整地址",
+      "modeRelay": "PeerID + 中继",
+      "modeId": "仅 PeerID（DHT）",
+      "addrPlaceholder": "/ip4/1.2.3.4/tcp/8787/p2p/12D3Koo…（对方设置页的地址）",
+      "peerPlaceholder": "对方 PeerID（12D3Koo…）",
+      "relayPlaceholder": "中继地址 /ip4/…/tcp/…/p2p/<中继 PeerID>",
+      "idHint": "需双方都开启跨网络并连着同一批中继（中继同时充当 DHT 引导节点），由 DHT 查出对方地址。",
+      "connecting": "已发起连接，对方上线后会出现在列表中"
+    },
+    "chat": {
+      "noDevices": "暂无设备",
+      "offlineHint": "离线，消息会待发送并自动重试",
+      "loadOlder": "加载更早消息",
+      "sendImage": "发送图片",
+      "send": "发送",
+      "pickDevice": "选择左侧设备开始聊天",
+      "editorPlaceholder": "输入消息，支持文字格式",
+      "noImages": "未选择图片文件",
+      "imagesSent": "已发出 {n} 张图片，等待对方确认",
+      "statusSending": "发送中",
+      "statusSent": "已发送",
+      "statusDelivered": "已送达",
+      "statusFailed": "发送失败",
+      "statusQueued": "待发送",
+      "retry": "重试",
+      "quote": "引用",
+      "copy": "复制",
+      "copied": "已复制",
+      "copyFailed": "复制失败",
+      "quoting": "正在引用",
+      "cancelQuote": "取消引用",
+      "recallExpired": "超过 2 分钟，无法撤回",
+      "me": "我",
+      "roomHistoryTag": "历史",
+      "roomArchived": "分组已更换，仅可查看历史消息",
+      "private": "私聊",
+      "group": "群聊",
+      "noRooms": "暂无群聊房间",
+      "pickRoom": "选择左侧房间开始群聊",
+      "roomEmpty": "还没有消息",
+      "roomLAN": "局域网",
+      "roomGroup": "分组",
+      "roomLocalHint": "历史仅保存在本机",
+      "roomWelcome": "同房间的在线成员会收到消息",
+      "roomPlaceholder": "发送群聊消息，Enter 发送",
+      "recalled": "消息已撤回",
+      "recall": "撤回",
+      "recallConfirm": "撤回后双方都不再显示这条内容，确定撤回？",
+      "previewImage": "[图片]",
+      "previewFile": "[文件]",
+      "fileCard": "文件",
+      "imagePending": "图片待接收",
+      "sendFile": "发送文件",
+      "attachLimit": "单条消息最多 {n} 个附件，多余的未发送"
+    },
+    "transfer": {
+      "fileName": "文件名",
+      "keyword": "关键字",
+      "direction": "方向",
+      "status": "状态",
+      "out": "发送",
+      "in": "接收",
+      "outgoing": "发送中",
+      "incoming": "接收中",
+      "folder": "所在文件夹",
+      "device": "设备",
+      "size": "大小",
+      "time": "时间",
+      "actions": "操作",
+      "cancel": "取消",
+      "retry": "重试",
+      "retryBatch": "继续整批",
+      "batchRetried": "已继续该批次未完成的文件",
+      "clear": "清理传输日志",
+      "clearSelected": "已选 {n} 条",
+      "clearNone": "勾选要清理的记录；未勾选的保持不动",
+      "clearTitle": "清理传输日志",
+      "clearSelectedConfirm": "确定删除选中的 {n} 条已结束记录？未勾选的记录和已下载文件都不会被删除。",
+      "cleared": "已清理 {n} 条记录",
+      "clearKept": "部分记录仍在传输或被聊天引用，已保留",
+      "reveal": "打开位置",
+      "statusPending": "等待确认",
+      "statusAccepted": "准备中",
+      "statusRunning": "传输中",
+      "statusDone": "已完成",
+      "statusFailed": "失败",
+      "statusCancelled": "已取消",
+      "statusRejected": "已拒绝"
+    },
+    "settings": {
+      "selfTitle": "本机",
+      "nickname": "设备昵称",
+      "avatar": "头像",
+      "avatarHint": "PNG/JPEG，且不超过 12KB；随 HELLO 同步给已连接设备",
+      "avatarPick": "选择图片",
+      "avatarClear": "清除头像",
+      "listenAddrs": "监听地址",
+      "addrHint": "自动发现失败时，把整条地址发给对方，在其“手动连接”中粘贴。",
+      "transferTitle": "传输",
+      "downloadDir": "下载目录",
+      "concurrency": "并发文件数",
+      "rateLimit": "传输限速",
+      "rateLimitHint": "KB/s，0 表示不限速（收发合计，立即生效）",
+      "prehash": "发送前预校验",
+      "prehashHint": "先算整文件 SHA-256，接收端已有相同文件时秒跳过（大文件会多读一遍）",
+      "autoAccept": "自动接收",
+      "autoAcceptHint": "对所有设备跳过确认弹窗（不推荐；也可只信任单个设备）",
+      "autostart": "开机自启",
+      "closeAction": "关闭按钮",
+      "closeAsk": "每次询问",
+      "closeTray": "最小化到托盘",
+      "closeQuit": "直接退出",
+      "singleInstance": "只允许单实例",
+      "singleInstanceHint": "重启后生效；关闭后可同时启动多个实例（各有独立数据目录和身份，用于开发测试）",
+      "wanTitle": "跨网络连接",
+      "wanEnable": "允许跨网络",
+      "wanEnableHint": "重启后生效；开启后向外网公布地址，并使用 NAT 穿透/中继（需对方也开启）",
+      "reachability": "可达性",
+      "reachHint": "公网可达的设备会自动为他人提供中继服务",
+      "reachPublic": "公网可达",
+      "reachPrivate": "仅内网（需中继或打洞）",
+      "reachUnknown": "检测中/未知",
+      "relays": "中继地址",
+      "relaysPlaceholder": "每行一个：/ip4/203.0.113.5/tcp/8787/p2p/12D3Koo…（无内置公共中继，请填你自己的）",
+      "group": "分组密钥",
+      "groupPlaceholder": "留空为不分组",
+      "groupHint": "保存后立即重连中继；其他跨网络项仍需重启。中继需用 -group 或 -group-file 配同一个值",
+      "groupStatus": "分组状态",
+      "groupExpires": "有效期至 {time}",
+      "groupNever": "长期有效",
+      "configPath": "配置文件",
+      "configPathEmpty": "尚未创建，保存后自动生成（默认在程序所在目录）",
+      "qrcode": "本机二维码",
+      "proxyTitle": "网络代理（经中继出网）",
+      "proxyAlert": "IPv4 TCP/UDP。分流：仅匹配的网段/域名走隧道，其余直连（填了域名时这些域名的 DNS 会被本地 fake-IP 劫持，从而走隧道）。全局：全部流量（含 DNS）都经中继出口，域名在出口侧解析。多条目换行输入。需要管理员权限并重启。中继必须 -exit 且白名单含本机 PeerID。",
+      "proxyStatus": "运行状态",
+      "proxyDisabled": "未启用",
+      "proxyDisabledHint": "开启代理并重启后生效",
+      "proxyRunning": "运行中",
+      "proxyProbeOK": "出口连通",
+      "proxyProbeFail": "出口自检失败：{err}",
+      "proxyProbing": "正在检测出口连通性…",
+      "proxyNotRunning": "未运行",
+      "proxyUnknownReason": "原因未知，查看日志 %APPDATA%\\FST\\fst.log",
+      "proxySocks": "SOCKS5 端口",
+      "proxySocksHint": "无需管理员：浏览器或系统代理填此地址即可经中继出网（域名由出口解析）",
+      "proxyEnable": "启用代理",
+      "proxyMode": "模式",
+      "proxyModeSplit": "分流（网段/域名）",
+      "proxyModeGlobal": "全局（全部经出口，含 DNS）",
+      "proxyExit": "出口中继",
+      "proxyExitPlaceholder": "选择已配置的中继",
+      "proxyRoutes": "代理网段",
+      "proxyRoutesPlaceholder": "每行一个 IPv4 CIDR（也支持空格/逗号分隔），例如：\n93.184.216.0/24\n142.250.0.0/15",
+      "proxyDomains": "代理域名",
+      "proxyDomainsPlaceholder": "每行一个域名（含子域，也支持空格/逗号分隔），例如：\ngoogle.com\n*.youtube.com",
+      "proxyToken": "出口令牌",
+      "proxyTokenPlaceholder": "中继 -exit-token 配置的令牌；留空不携带",
+      "proxyIPv6": "代理 IPv6",
+      "proxyIPv6Hint": "实验；TUN 增加 IPv6 栈与 AAAA 解析，初始化失败自动降级为 IPv4",
+      "experimental": "实验",
+      "restartHint": "重启后生效",
+      "socksTitle": "SOCKS5 入站（加固）",
+      "socksEnable": "SOCKS5 入站",
+      "socksOn": "开启",
+      "socksOff": "关闭",
+      "socksEnableHint": "关闭后不再监听 20300（重启生效）；下面的账号/来源/并发仅开启时可设置",
+      "socksNoAuthWarn": "未设置账号：仅监听回环、免认证，任何本机进程都可以使用。",
+      "socksUser": "用户名",
+      "socksPass": "密码",
+      "socksAuthHint": "设置后强制 RFC1929 用户名密码认证",
+      "socksListen": "监听地址",
+      "socksListenPlaceholder": "留空=127.0.0.1:20300；配置来源白名单时默认 0.0.0.0:20300",
+      "socksAllow": "允许来源",
+      "socksAllowPlaceholder": "每行一个 CIDR，例如 192.168.1.0/24；留空仅允许回环",
+      "socksLimits": "并发上限",
+      "socksMaxTotal": "全局",
+      "socksMaxPerIP": "单 IP",
+      "manualTitle": "手动连接",
+      "manualPlaceholder": "/ip4/192.168.1.20/tcp/8787/p2p/12D3Koo…"
+    }
+  }
+}

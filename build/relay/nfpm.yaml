@@ -1,0 +1,22 @@
+name: "fst-relay"
+arch: ${GOARCH}
+platform: "linux"
+version: "0.1.4"
+section: "net"
+priority: "optional"
+maintainer: "FST <fst@localhost>"
+description: "FST relay: headless libp2p circuit relay + DHT for FST nodes behind NAT"
+license: "MIT"
+release: "1"
+
+contents:
+  - src: "./bin/fst-relay-linux-amd64"
+    dst: "/usr/bin/fst-relay"
+    file_info:
+      mode: 0755
+  - src: "./build/relay/fst-relay.service"
+    dst: "/lib/systemd/system/fst-relay.service"
+
+scripts:
+  postinstall: "./build/relay/postinstall.sh"
+  preremove: "./build/relay/preremove.sh"
