@@ -1,10 +1,13 @@
+
 [**English**](README.md) | [简体中文](README_zh.md) | [日本語](README_ja.md)
 
 # FST-Go
 
-**File Safe Transfer** — secure file transfer.
+**File Safe Transfer** — peer-to-peer file transfer and chat over LAN or across NAT, in Go.
 
-A P2P desktop application for LAN and cross-network use, written in Go: peer-to-peer file transfer, chat, and an optional self-hosted egress proxy. No accounts, no central business server. Every machine is both a client and a full node: peers on the same LAN are discovered automatically, and crossing network boundaries only requires one relay of your own.
+No accounts, no central business server. Every device is both a client and a full libp2p node: LAN discovery is automatic, and crossing network boundaries needs nothing but a relay you host yourself.
+
+Current release (v1.2.0): **Windows desktop** (`fst.exe`) + **Android app** (APK) + **Linux headless relay** (`fst-relay`) + **Linux server package** (`fst` deb, browser UI). Released under the [MIT License](LICENSE).
 
 
 ### This program is provided for learning and reference only. Do not use it for illegal purposes. It is meant to be helpful, but the author provides no warranty of any kind.
@@ -12,85 +15,87 @@ A P2P desktop application for LAN and cross-network use, written in Go: peer-to-
 | Name | Meaning |
 |---|---|
 | **FST** | **F**ile **S**afe **T**ransfer |
-| **Go** | Backend and node are written in Go; it also suggests "sending files out" |
+| **Go** | Written in Go; it also suggests "sending files out" |
 
 The repository and CLI still use the short name `fst` (for example `fst.exe`, `fst-relay`, protocol IDs under `/fst/...`); it is the same project as the product name FST-Go.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev/)
 [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?logo=vue.js)](https://vuejs.org/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin)](https://kotlinlang.org/)
 [![libp2p](https://img.shields.io/badge/libp2p-v0.50-6e57ff)](https://libp2p.io/)
-
-Current release form: **Windows desktop** (`fst.exe`) + **headless Linux relay** (`fst-relay`). This repository is released under the [MIT License](LICENSE).
 
 ---
 
 ## Contents
 
-- [The problem it solves](#the-problem-it-solves)
+- [What it solves](#what-it-solves)
 - [Features](#features)
 - [Design highlights](#design-highlights)
 - [Architecture](#architecture)
-- [Modules](#modules)
+- [Tech stack](#tech-stack)
 - [Protocols](#protocols)
-- [Open-source components](#open-source-components)
 - [Requirements](#requirements)
-- [Building the desktop app](#building-the-desktop-app)
-- [Packaging and distribution](#packaging-and-distribution)
+- [Install](#install)
+- [Build the desktop app](#build-the-desktop-app)
+- [Build the Android app](#build-the-android-app)
+- [Packaging and release artifacts](#packaging-and-release-artifacts)
 - [Relay: build, deploy and configure](#relay-build-deploy-and-configure)
 - [Relay groups and exit authorization](#relay-groups-and-exit-authorization)
 - [How a client connects to a relay](#how-a-client-connects-to-a-relay)
 - [Network proxy (optional)](#network-proxy-optional)
-- [Headless service mode (fst serve)](#headless-service-mode-fst-serve)
 - [Configuration and data directory](#configuration-and-data-directory)
-- [Development and testing](#development-and-testing)
+- [Headless service mode (fst serve)](#headless-service-mode-fst-serve)
+- [LAN discovery and troubleshooting](#lan-discovery-and-troubleshooting)
+- [Local development and debugging](#local-development-and-debugging)
 - [Status and limitations](#status-and-limitations)
 - [License](#license)
 
 ---
 
-## The problem it solves
+## What it solves
 
-Common cloud drives, instant messengers, and commercial VPNs keep your traffic, files, and contacts on someone else's servers. Offices, home LANs, and two machines that are both behind NAT often just want to:
+Cloud drives, messengers and commercial VPNs keep your traffic, files and contact list on someone else's server. In an office LAN, at home, or between two machines behind NAT, people usually just want:
 
-1. **See each other, exchange messages, and transfer files on the same subnet** — no registration, no public accounts.
-2. **When not on the same subnet**, use one of your own VPSes as the introducer/forwarder instead of uploading files to a cloud drive.
-3. **When needed, route some or all of this machine's traffic through your own relay** (a self-hosted egress) instead of installing an unrelated proxy stack.
+1. **See each other, chat and send files on the same subnet** — no sign-up, no public account.
+2. **When not on the same subnet**, use one of your own VPSes as introducer/forwarder instead of uploading to a cloud drive.
+3. Optionally route some or all traffic **through your own relay** instead of installing an unrelated proxy stack.
 
-FST-Go puts these three things into one process and one service port: device identity is a libp2p PeerID, and discovery, chat, files, and proxying are all multiplexed over encrypted connections. Files travel over end-to-end encrypted channels with whole-file SHA-256 verification and resumable transfers, never through a third-party cloud drive.
+FST-Go puts all three into one process and one service port. Device identity is a libp2p PeerID; discovery, chat, files and proxying are multiplexed over an encrypted connection. Files travel over an end-to-end encrypted channel with whole-file SHA-256 verification and resumable transfer — never through a third-party cloud drive.
+
+Desktop and Android share the **same Go core** (`internal/*`), so the protocol does not fork: messaging, transfer, resume and offline queueing behave identically on phone and PC.
 
 ---
 
 ## Features
 
-| Capability | Description |
+| Capability | Detail |
 |---|---|
-| Device discovery | Automatic LAN peering via mDNS; across networks via relay directory + private DHT; add peers by full multiaddr, PeerID + relay, or PeerID alone |
-| Peer-to-peer chat | Encrypted channel, local archive, delivery ACK, unread counts, rich text (≤32,000 characters per message); text / image / file-card bubbles; recall within 2 minutes; avatars synced via HELLO |
-| Offline messages | When the peer is offline or times out, messages become "queued"; scanned every 15 seconds and retried with exponential backoff (capped at 10 minutes / 20 attempts), flushed immediately when the peer comes online; manual retry from the bubble |
-| Group chat | Automatic GossipSub rooms: one room per LAN, plus a same-group room once a relay group key is configured; text only, local history, de-duplicated by message ID; reuses 8787, no extra port |
-| File transfer | Multi-select / drag onto a device card, confirmation dialog, trusted or auto-accept, concurrency 1–8, `.fstpart` resume, whole-file SHA-256, global rate limit, pre-hash skip, continue the batch after failures |
-| Folder transfer | Recursive directory send with relative structure and empty directories preserved; ≤1000 files per batch, larger sets split automatically; symlinks/special files reported before sending |
-| Cross-network | AutoNAT, DCUtR hole punching, Circuit Relay; after a successful punch the redundant relay connection is dropped and upgraded to direct |
-| Self-hosted relay | `fst-relay`: circuit relay + online directory + DHT server; group isolation, group expiry, per-group soft limits |
-| Exit authorization | `-exit-allow` PeerID allowlist, `-exit-token` multiple tokens with expiry, `-exit-group` group restriction, intersected; all unconfigured keeps the previous behavior |
-| Egress proxy | TUN split (CIDR / domain) or global; IPv4 TCP+UDP, optional experimental IPv6; local SOCKS5 inbound (default `127.0.0.1:20300`) |
-| SOCKS5 hardening | Optional RFC1929 credentials, source CIDR allowlist, per-IP/global concurrency caps; without credentials it stays loopback-only and unauthenticated |
-| Desktop integration | Tray, close behavior (ask / tray / quit), system notifications, autostart, single or multiple instances |
-| Engineering foundation | `user_version` schema migrations, offline icons, zh/en strings for the four feature pages |
+| Discovery | Automatic LAN mDNS (`_fst._tcp` DNS-SD plus the legacy `fst` label); across networks via relay directory + private DHT. Peers can be added by full multiaddr, PeerID+relay, or PeerID only |
+| Cross-platform | Windows / Linux / Android share one protocol and data model; phone↔PC and phone↔phone connect directly, with no intermediary on the LAN |
+| 1:1 chat | Encrypted channel, local archive, delivery ACK, unread counts, rich text (≤32000 chars); text / image / file-card bubbles; recall within 2 minutes; avatar synced via HELLO |
+| Offline queue | Messages to offline peers become "pending", retried every 15 s with exponential backoff (cap 10 min, 20 attempts), flushed immediately on `peer:online`; manual retry per bubble |
+| Group chat | GossipSub auto-rooms: one per LAN, plus per relay-group rooms derived from the group key. Text only, local history, de-duplicated by message ID, reusing port 8787 |
+| File transfer | Multi-select / drag onto a device card, confirm dialog, trust or auto-accept, concurrency 1–8, `.fstpart` resume, whole-file SHA-256, global rate limit, pre-hash skip, continue-on-failure |
+| Folder transfer | Recursive send with relative paths and empty directories preserved; ≤1000 files per batch, larger sets auto-split |
+| Across NAT | AutoNAT, DCUtR hole punching, Circuit Relay; the redundant relay connection is dropped once a direct path exists |
+| Self-hosted relay | `fst-relay`: circuit relay + online directory + DHT server, with group isolation, key expiry and per-group soft caps |
+| Exit authorization | PeerID allow-list, expiring tokens and group restriction, intersected; unconfigured means legacy behaviour |
+| Outbound proxy | TUN split routing (CIDR/domain) or global; IPv4 TCP+UDP with experimental IPv6; local SOCKS5 inbound at `127.0.0.1:20300` by default |
+| Mobile app | Four-tile home (devices / chats / transfers / settings), foreground service, system DNS-SD discovery, SAF file picking, MediaStore export, settings shared with desktop |
+| Desktop integration | Tray, close behaviour (ask / minimize / quit), native notifications, launch at login, single or multi instance |
 
 ---
 
 ## Design highlights
 
-- **Identity is a PeerID, not an IP / MAC.** The private key lives in `%APPDATA%\FST\identity.key`; nicknames and addresses may change, the device key does not.
-- **Single service port 8787** (TCP + QUIC/UDP on the same number). Chat, files, and proxying all use libp2p streams; no extra public port for features. The only exception is the local SOCKS5 inbound (default `127.0.0.1:20300`, loopback only).
-- **File bytes never enter the frontend.** Vue only receives local paths; I/O, hashing, and progress stay in Go, with throttled progress events; chat image/file cards carry only a transfer ID.
-- **No central business database.** Chat and transfer history live only in local SQLite; nodes do not sync messages; schema upgrades go through `user_version` migrations.
+- **Identity is a PeerID, not IP/MAC.** The key lives in `%APPDATA%\FST\identity.key`; nickname and addresses may change, the device stays the same.
+- **One business port, 8787** (TCP and QUIC/UDP). Chat, files and proxying all ride libp2p streams; the only extra listener is the loopback SOCKS5 inbound.
+- **File bytes never enter the frontend.** Vue only receives a local path; I/O, hashing and progress stay in Go.
+- **One core, three shells.** The Android app does not reimplement the protocol: `phone/core` imports `internal/node|chat|transfer` directly and crosses the language boundary with JSON only.
+- **No central database.** Chat and transfer history live in local SQLite; schema upgrades go through `user_version` migrations.
 - **No home-grown crypto.** Application messages use libp2p secure channels (Noise/TLS over TCP, built into QUIC).
-- **Exit is fail-closed.** If a relay enables `-exit` with an empty allowlist, nobody can use that machine as a proxy; tokens are compared by digest and never logged in plaintext.
-- **Fully self-hosted relay.** No public relay is bundled; traffic only goes through the relay whose address you configure.
-- **High-risk features are off by default.** Proxy IPv6, LAN-origin SOCKS5, and unconfigured exit tokens behave exactly like older versions.
+- **Exit is fail-closed.** A relay started with `-exit` and an empty allow-list lets nobody through; tokens are compared against digests and never logged.
 
 ---
 
@@ -100,112 +105,105 @@ FST-Go puts these three things into one process and one service port: device ide
 flowchart LR
   UI[Vue 3 UI] -->|same-origin /api/fst/*| API[internal/api]
   UI <-->|Wails Events| EVT[event bus]
+  KUI[Compose UI] -->|127.0.0.1 HTTP + SSE| DMN[phone/daemon]
+  DMN --> PCORE[phone/core]
   API --> CORE[node / chat / transfer / room]
   API --> PROXY[internal/proxy]
+  PCORE --> CORE
   CORE --> DB[(SQLite)]
   PROXY --> DB
   CORE <--> P2P[libp2p Host :8787]
-  P2P <-->|mDNS / DHT / circuit| PEER[other FST-Go clients]
-  P2P -.->|GossipSub /fst/room| ROOM[same-group or same-LAN clients]
+  P2P <-->|mDNS / DHT / circuit| PEER[other FST-Go nodes]
+  P2P -.->|GossipSub /fst/room| ROOM[LAN or same-group peers]
   P2P -.->|/fst/proxy/1.0.0| RELAY[fst-relay]
+  KUI -.->|NsdManager| PEER
 ```
 
-After the desktop app starts: open the data directory → migrate SQLite → load or create identity → build the libp2p Host → attach chat, transfer, and group chat → optionally start SOCKS5/TUN from config → the Wails window embeds `front/dist`, and `/api/*` is served by Go.
+Desktop: open the data directory → migrate SQLite → load or generate identity → build the libp2p host → attach chat, transfer and room services → optionally start SOCKS5/TUN → Wails embeds `front/dist` and routes `/api/*` into Go.
+
+Android: the foreground service starts `libfstcored.so` as a child process (loopback HTTP + SSE) → Kotlin injects the device IPv4 and DNS-SD results → the Compose UI calls the same API over HTTP. Encryption, framing and transfer all stay in Go.
 
 ---
 
-## Modules
+## Tech stack
 
-| Path | Responsibility |
+| Layer | Choice |
 |---|---|
-| `main.go` / `instance.go` / `config.go` | Window, tray, instance directory, `config.yaml`, proxy assembly |
-| `internal/api` | `/api/fst/*`, the `{code,message,data}` envelope, read-only media endpoint |
-| `internal/node` | Host, mDNS, DHT, relay reservations, HELLO/directory, presence, group table, avatars |
-| `internal/chat` | Chat send/receive, kind/attach, recall, offline queue with exponential backoff, persistence, ACK |
-| `internal/room` | GossipSub group chat: automatic rooms, topic derivation, LAN direct-connection checks, local history |
-| `internal/transfer` | File/folder offers, automatic batching, streaming copy, resume, verification, rate limit, pre-hash, progress |
-| `internal/store` | SQLite (WAL, pure-Go driver), `user_version` migrations |
-| `internal/proto` | Protocol IDs, JSON framing, message structs |
-| `internal/proxy` | Exit client, TUN, route bypass, fake-IP DNS, SOCKS5, exit tokens, IPv6 |
-| `internal/e2e` | In-process multi-node integration tests |
-| `cmd/fst-relay` | Headless relay/exit entry point |
-| `front/src/views/fst` | Devices / Chat / Transfers / Settings |
-| `front/src/api/fst` + `types/api/fst.d.ts` | The single business HTTP wrapper and type contract |
-| `front/src/store/modules/fst.ts` | The single Wails event subscription point |
+| Language | Go — module `fst`, `go 1.26.0` directive; built here with the Go 1.27 toolchain |
+| Desktop shell | Wails v3 `v3.0.0-beta.29` — window, tray, native dialogs, drag & drop, notifications, single instance |
+| P2P | go-libp2p v0.50, kad-dht v0.42 (private `/fst` DHT), go-libp2p-pubsub (GossipSub), AutoNATv2, DCUtR, Circuit Relay |
+| Discovery | `internal/lanmdns` on top of zeroconf v2 + miekg/dns; Android uses the system `NsdManager` |
+| Proxy | tun2socks v2.6 + gVisor netstack + WireGuard TUN (needs `wintun.dll` on Windows) |
+| Storage | `modernc.org/sqlite` (pure Go, no CGO) + `database/sql` |
+| Config / HTTP / logging | `go.yaml.in/yaml/v3` · stdlib `net/http` · `log/slog` → rotating `fst.log` |
+| Frontend | Vue 3.5 + TypeScript, Vite 8, Element Plus 2.13, Tailwind CSS v4, Pinia 3, vue-router, axios, pnpm |
+| Mobile | Kotlin 2.0.21 + Jetpack Compose (Material 3), AGP 8.7.3, minSdk 26 / targetSdk 35, arm64-v8a |
+
+UI ↔ Go is plain HTTP, not libp2p: same-origin `/api/fst/*` with a `{code, message, data}` envelope (business errors are HTTP 200 + `code: 400`), plus Wails events on desktop and SSE in `fst serve` / on mobile.
 
 ---
 
 ## Protocols
 
-Application protocols are defined in `internal/proto`. The underlying transport is handled by libp2p (multiaddrs, encryption, multiplexing).
+Defined in `internal/proto`; transport, encryption and multiplexing come from libp2p.
 
-| Protocol ID | Purpose | Frame format |
+| Protocol ID | Purpose | Framing |
 |---|---|---|
-| `/fst/msg/1.0.0` | Control and chat: HELLO, CHAT, CHAT_ACK, CHAT_RECALL, FILE_OFFER/ACCEPT/REJECT/CANCEL, ERROR | uvarint length + JSON, single frame ≤ 1 MiB |
-| `/fst/file/1.0.0` | Single file content | JSON `FileHeader` → raw bytes `[offset,size)` → 32-byte SHA-256 → JSON `FileResult` |
-| `/fst/proxy/1.0.0` | Egress through a relay | JSON `ProxyReq/Resp`; bidirectional copy after TCP; 2-byte big-endian length-prefixed datagrams after UDP |
-| GossipSub `fst/room/1.0.0/<room>` | Group chat broadcast | Signed JSON `RoomMsg`; `lan` is the LAN room, `g-<hash>` is a group room (the hash does not reveal the key) |
-| mDNS service name `fst` | LAN discovery | UDP 5353 multicast |
-| Private Kademlia `/fst` | Address lookup by PeerID | Peer routing only, never joins the public DHT |
+| `/fst/msg/1.0.0` | Control and chat: HELLO, CHAT, CHAT_ACK, CHAT_RECALL, FILE_OFFER/ACCEPT/REJECT/CANCEL, ERROR | uvarint length + JSON, ≤1 MiB per frame |
+| `/fst/file/1.0.0` | Single file body | JSON `FileHeader` → raw bytes `[offset,size)` → 32-byte SHA-256 → JSON `FileResult` |
+| `/fst/proxy/1.0.0` | Exit through a relay | JSON `ProxyReq/Resp`; raw bidirectional copy for TCP, 2-byte big-endian length prefix for UDP |
+| GossipSub `fst/room/1.0.0/<room>` | Group chat | Signed JSON `RoomMsg`; `lan` room, `g-<hash>` group room (the hash reveals nothing) |
+| mDNS `_fst._tcp` / `fst` | LAN discovery | UDP 5353 multicast; the TXT record carries `dnsaddr=` and the PeerID |
+| Private Kademlia `/fst` | Address lookup by PeerID | Peer routing only; never joins the public DHT |
 
-In HELLO: regular nodes carry LAN multiaddrs of already-connected peers (peer exchange); **only relays** fill in `Directory` (online client PeerIDs), and clients only trust directories from relays they configured; `group` is sent only to the configured relay, whose reply carries `group_name` / `group_expires` / `group_error`. Avatars carry only a small base64 image (≤16KB base64), never file bytes.
-
-Private chat adds the `queued` state (pending send): when the peer is offline or times out, the message enters the local queue and is retried with backoff; `chat:ack` pushes state changes, and `POST /messages/{id}/retry` retries manually. Group messages are sent only over GossipSub and never enter `/fst/msg`; the LAN room only accepts messages whose original sender is a directly connected, non-circuit neighbor.
-
-`FileInfo` is `{id,name,size,rel_path?,sha256?}`; `rel_path` is used for folder transfers and must be sanitized by the receiver as untrusted input. `ProxyReq` is `{net,addr,port,family?,token?}`; `family` explicitly declares `ip4`/`ip6`, and the exit never guesses dual-stack.
-
-UI ↔ Go is **not** libp2p: same-origin HTTP `/api/fst/*` (business errors: HTTP 200 + `code: 400`) plus Wails events (`peer:*`, `chat:*`, `transfer:*`, `proxy:status`, etc.).
-
----
-
-## Open-source components
-
-Direct dependencies (versions per `go.mod` / `front/package.json`):
-
-| Component | Purpose |
-|---|---|
-| [go-libp2p](https://github.com/libp2p/go-libp2p) v0.50 | PeerID, mDNS, Noise/TLS, yamux, TCP+QUIC, AutoNATv2, DCUtR, Circuit Relay |
-| [go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht) v0.42 | Private DHT |
-| [go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub) v0.18 | GossipSub group chat broadcast |
-| [Wails v3](https://wails.io/) `v3.0.0-beta.29` | Desktop shell, tray, native dialogs, drag and drop, embedded frontend |
-| [tun2socks](https://github.com/xjasonlyu/tun2socks) v2.6 + [gVisor](https://gvisor.dev/) | User-space TUN stack |
-| [golang.zx2c4.com/wireguard](https://git.zx2c4.com/wireguard-go) / [Wintun](https://www.wintun.net/) | Windows TUN adapter (requires the officially signed `wintun.dll`) |
-| [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) v1.60 | Pure-Go SQLite, no CGO at runtime |
-| [yaml.v3](https://github.com/go.yaml/yaml) v3.0.5 | `config.yaml` |
-| Vue 3.5, Vite 8, Element Plus 2.13, Tailwind CSS v4, Pinia, vue-router, axios, wangEditor, DOMPurify, Iconify | UI, build, and offline icons |
-
-Third-party libraries keep their own licenses. This repository's source is covered by MIT.
+Protocol IDs have not changed since 1.0.0, so **v1.2.0 interoperates with older builds**; `internal/proto.Version` (`1.2.0`) is for display and troubleshooting only.
 
 ---
 
 ## Requirements
 
-**Desktop**
+**Desktop** — Windows 10/11 x64 with WebView2 (usually present on Win11); the LAN needs **TCP/UDP 8787** and **UDP 5353** open with router AP/client isolation disabled; cross-network needs 8787 reachable to your relay; the TUN proxy needs administrator rights plus `wintun.dll`; SOCKS5 inbound needs neither. Linux desktop (verified on Ubuntu 24.04) needs the GTK4 + WebKitGTK 6.0 runtime.
 
-- Windows 10/11 x64
-- [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (usually preinstalled on Windows 11)
-- LAN: allow **TCP/UDP 8787** and **UDP 5353** (mDNS) through the firewall; disable AP/client isolation on the router
-- Cross-network: also allow 8787 to the relay, and enable "Allow cross-network" in settings
-- TUN proxy: administrator rights + `wintun.dll` next to the exe
-- SOCKS5 inbound: no administrator rights, no `wintun.dll`; listens on loopback by default
-- Linux desktop (verified on Ubuntu 24.04): GTK4 + WebKitGTK 6.0 runtime libraries; the TUN proxy needs root / `CAP_NET_ADMIN` and `/dev/net/tun`
+**Android** — Android 8.0 (API 26)+, arm64-v8a, notification and nearby-devices permissions; the same Wi-Fi as the PC for discovery.
 
-**Service mode (fst serve)**
+**Service mode / deb** — any modern browser; the backend binds `127.0.0.1:9797` unless told otherwise.
 
-- Any modern browser (desktop / Android / iOS); the backend can share a machine with the desktop app
-- Binds `127.0.0.1:9797` by default; when exposed to the LAN, allow **TCP** on the chosen port
-
-**Relay**
-
-- Linux with a public IPv4 (the current deb is amd64)
-- Security group / `ufw`: allow **TCP 8787 and UDP 8787**
-- Exit mode also needs outbound TCP/UDP from the relay to the target
+**Relay** — Linux with a public IPv4 (amd64 deb today); open **TCP 8787 and UDP 8787**; exit mode additionally needs outbound TCP/UDP to its targets.
 
 ---
 
-## Building the desktop app
+## Install
 
-Requirements: Go 1.26+, Node 22+, [pnpm](https://pnpm.io/), [Wails v3 CLI](https://v3.wails.io/) (matching the Wails version in `go.mod`).
+Grab the artifact for your platform from [Releases](https://github.com/xuey490/Fst-go/releases):
+
+| Platform | File | Notes |
+|---|---|---|
+| Windows x64 | `fst-1.2.0-windows-amd64.zip` | **Recommended**: `fst.exe` + `wintun.dll` (needed for the TUN proxy) |
+| Windows x64 | `fst-1.2.0-windows-amd64.exe` | Single file; LAN features only, the cross-network TUN proxy needs `wintun.dll` |
+| Android arm64 | `fst-1.2.0-android-arm64.apk` | debug-signed, installs directly; a release keystore is required for store distribution |
+| Debian / Ubuntu amd64 | `fst_1.2.0-1_amd64.deb` | **Service mode** (`fst serve`, browser UI) |
+
+**Windows**: unzip anywhere (not into `%APPDATA%\FST`) and run `fst.exe`; the first launch creates the identity and database under `%APPDATA%\FST\`.
+
+**Android**: side-load the APK, allow "install unknown apps", grant notifications and nearby-devices; the core runs as an extracted native library inside a foreground service.
+
+**Debian / Ubuntu**:
+
+```bash
+sudo dpkg -i fst_1.2.0-1_amd64.deb
+fst serve          # prints the URL, access token and data directory
+# open http://127.0.0.1:9797 and paste the token
+```
+
+The deb ships the **service build**, not a GTK window build: the GTK4 + WebKitGTK desktop target must be compiled with CGO on Linux. That configuration is kept in `build/linux/nfpm/nfpm.yaml`; run `nfpm package -f build/linux/nfpm/nfpm.yaml -p deb` on any Linux host to produce the windowed package.
+
+**First-connection checklist**: same subnet, AP/client isolation off, TCP/UDP 8787 and UDP 5353 allowed on both sides. If the device list stays empty, follow [LAN discovery and troubleshooting](#lan-discovery-and-troubleshooting).
+
+---
+
+## Build the desktop app
+
+Requirements: Go 1.26+, Node 22+, [pnpm](https://pnpm.io/), [Wails v3 CLI](https://v3.wails.io/) matching the version in `go.mod`.
 
 ```powershell
 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.29
@@ -220,168 +218,125 @@ Stop-Process -Name fst -ErrorAction SilentlyContinue
 wails3 build
 ```
 
-Artifacts: `bin/fst.exe` plus `bin/wintun.dll` copied from `build/windows/wintun/`. The frontend is embedded in the exe, so you do not need to ship `front/`.
+Output: `bin/fst.exe` plus `bin/wintun.dll` copied from `build/windows/wintun/`. The frontend is embedded, so `front/` is not needed at runtime.
 
-For the service mode, also build a **console-subsystem** binary (logs print straight to the terminal — recommended for command-line use):
+A reproducible script is also provided (it generates the icon/manifest `.syso` and drops artifacts into `dist/`):
+
+```bash
+scripts/build-exe.sh          # → bin/fst.exe, dist/fst-<version>-windows-amd64.exe
+```
+
+For a console-subsystem build (logs straight to the terminal — recommended for `serve`):
 
 ```powershell
 go build -o bin\fst-serve.exe .
 ```
 
-### Running
-
-**Desktop `fst.exe`** (GUI subsystem):
-
-1. Double-click `bin\fst.exe`, or run `.\fst.exe` in a terminal (no arguments starts the GUI).
-2. Quit via the tray icon or the window close button.
-
-**Service mode `fst-serve.exe`** (console subsystem):
-
-```powershell
-cd bin
-.\fst-serve.exe serve                      # default http://127.0.0.1:9797, local only
-.\fst-serve.exe serve -addr 0.0.0.0:9797   # expose to the LAN (allow TCP)
-```
-
-1. On startup the terminal prints a banner: **access URL / access token (64 hex chars) / data directory**, followed by live logs.
-2. Open the URL in a browser and enter the token once to get the full desktop-equivalent UI (session cookie lasts 30 days).
-3. Stop: press **Ctrl+C** in the terminal (graceful shutdown); for background processes use `Stop-Process -Name fst-serve`.
-4. Forgot the token: search `token=` in the data directory's `fst.log`, or delete the `web_token` row in the SQLite `settings` table and restart to regenerate.
-5. Note: serve and the desktop app share the same data directory and port 8787 — **only one can run at a time**; to run both, isolate with `FST_DATA_DIR` / `FST_PORT` (see below).
-
-> `fst.exe serve` also starts the service (GUI subsystem, output via console attachment), but for terminal use `fst-serve.exe` is the most predictable.
-
-Development with hot reload (does not write `bin/`):
-
-```powershell
-wails3 dev
-```
-
-Run a second instance on the same machine (separate identity and port):
-
-```powershell
-$env:FST_DATA_DIR = "D:\fst-dev-2"
-$env:FST_PORT = "8788"
-```
-
 ### Linux desktop (verified on Ubuntu 24.04 LTS)
 
-The desktop app depends on GTK4 + WebKitGTK (C libraries, CGO required), so it **cannot** be cross-compiled with `GOOS=linux`; build it on Linux:
+GTK4 + WebKitGTK are C libraries, so CGO is mandatory and `GOOS=linux` cross-compilation does not work — build on Linux:
 
 ```bash
-# system dependencies
 sudo apt update
-sudo apt install -y build-essential pkg-config curl git
-sudo apt install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+sudo apt install -y build-essential pkg-config curl git libgtk-4-dev libwebkitgtk-6.0-dev
 
-# toolchain: Go 1.26+, Node 22+, pnpm (install per their official docs)
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 export PATH=$PATH:$(go env GOPATH)/bin
 
-# frontend (alternatively build it on Windows and copy front/dist over; embed requires it to exist)
-cd front
-pnpm install
-pnpm build
-cd ..
-
-# build
-wails3 build
+cd front && pnpm install && pnpm build && cd ..
+wails3 build          # → bin/fst
 ```
 
-Artifact: `bin/fst`.
-
-The service mode (headless, browser access) can additionally be built as a console binary, or run directly via `./bin/fst serve` on a machine with the dependencies installed:
-
-```bash
-go build -o bin/fst-serve .
-./bin/fst-serve serve          # default 127.0.0.1:9797, full UI in the browser
-```
-
-> Like the desktop build this requires the GTK development libraries; on a bare server, build elsewhere and copy the binary over (see the systemd example in the service-mode section below).
-
-- Ubuntu 22.04 lacks WebKitGTK 6.0; use the GTK3 stack instead: `sudo apt install -y libgtk-3-dev libwebkit2gtk-4.1-dev`, and build with `-tags gtk3`. Ubuntu 20.04 and older are not supported.
-- glibc compatibility: a binary built on one release only runs on that release or newer; if your targets include 22.04, build on 22.04.
-- The TUN proxy requires root / `CAP_NET_ADMIN` and `/dev/net/tun`; the SOCKS5 inbound (`127.0.0.1:20300`) needs no privileges.
-- Verify in an X11 session first; WebKitGTK has known compatibility issues under Wayland.
+Ubuntu 22.04 has no WebKitGTK 6.0: use `libgtk-3-dev libwebkit2gtk-4.1-dev` and build with `-tags gtk3`. If you only need service mode, skip GTK entirely with `scripts/build-deb.sh` (`CGO_ENABLED=0 -tags server,production`).
 
 ---
 
-## Packaging and distribution
+## Build the Android app
 
-To run FST-Go on another Windows machine you only need `bin/fst.exe` (add `wintun.dll` from the same directory if you want the TUN proxy). Do not copy `%APPDATA%\FST\`: the `identity.key` there is the device identity, and sharing it between two machines that are online at the same time causes a PeerID conflict.
+The mobile core is a **static executable** placed in `jniLibs` and launched as a child process; Kotlin talks to it over loopback HTTP + SSE. No NDK, no gomobile, and `internal/*` is reused verbatim.
 
-Optional installer (requires [NSIS](https://nsis.sourceforge.io/) on the build machine):
+Requirements: Go 1.26+, Android SDK 35, JDK 17/21, Gradle 8.9+ (8.13 used here).
+
+```bash
+phone/scripts/build-core.sh           # → jniLibs/arm64-v8a/libfstcored.so
+phone/scripts/build-apk.sh            # debug; 'release' also builds, debug-signed without a keystore
+adb install -r phone/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Three platform constraints worth knowing before changing the build (`build-core.sh` self-checks them):
+
+- **Static, non-PIE**: `-buildmode=pie` writes `PT_INTERP=/lib/ld-linux-aarch64.so.1` (a glibc path); on Android `execve` then fails with ENOENT and the process silently never starts.
+- **Do not switch to `GOOS=android`**: it enables `wlynxg/anet`'s Android branch, which `//go:linkname`s `net.zoneCache` — removed in Go 1.27, so linking fails with no upstream fix.
+- **Loopback HTTP needs a `network_security_config`**: targetSdk ≥ 28 blocks cleartext, loopback included before API 37. Without it `/health` always fails and the UI reports "core health check timed out".
+
+See [phone/README.md](phone/README.md) for mobile architecture and Android specifics.
+
+---
+
+## Packaging and release artifacts
+
+Copying FST-Go to another Windows machine needs **only `bin/fst.exe`** (plus `wintun.dll` beside it if you want the TUN proxy). Never copy `%APPDATA%\FST\` — `identity.key` is the device identity and two live machines would collide on PeerID.
+
+Optional installer (requires [NSIS](https://nsis.sourceforge.io/)):
 
 ```powershell
 wails3 package
 ```
 
-This bundles the WebView2 bootstrapper. Without NSIS, just distribute the exe.
+All three platforms, with output collected in `dist/` (git-ignored):
+
+```bash
+scripts/build-exe.sh                                        # Windows
+scripts/build-deb.sh                                        # Linux service-mode deb (needs nfpm)
+phone/scripts/build-core.sh && phone/scripts/build-apk.sh    # Android
+```
+
+`scripts/build-deb.sh` needs [nfpm](https://nfpm.goreleaser.com/): `go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest`.
+
+Diagnostic tools build on demand (Windows only), for example `go build -o bin\mdnsview.exe .\cmd\mdnsview`.
 
 ---
 
 ## Relay: build, deploy and configure
 
-The relay has **no UI and no mDNS**. It does three things: Circuit Relay (forwarding between two NATed clients), private DHT, and writing the PeerIDs of connected FST-Go clients into the HELLO directory. With `-exit` it can also act as an egress.
-
-### Cross-compiling and building a deb on Windows
+The relay has no UI and no mDNS. It provides circuit relaying, a private DHT, and an online directory of connected PeerIDs. With `-exit` it can also act as an outbound gateway.
 
 ```powershell
-$env:GOOS = "linux"
-$env:GOARCH = "amd64"
-$env:CGO_ENABLED = "0"
+$env:GOOS = "linux"; $env:GOARCH = "amd64"; $env:CGO_ENABLED = "0"
 go build -trimpath -ldflags "-s -w" -o bin/fst-relay-linux-amd64 ./cmd/fst-relay
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
-
-$env:Path += ";$(go env GOPATH)\bin"
 wails3 tool package -name fst-relay -format deb -config ./build/relay/nfpm.yaml -out ./bin
 ```
 
-This produces something like `bin/fst-relay_0.1.3_amd64.deb`.
-
-### Installing on Linux
-
 ```bash
-sudo ufw allow 8787/tcp
-sudo ufw allow 8787/udp
-sudo dpkg -i fst-relay_0.1.3_amd64.deb
-sudo systemctl status fst-relay
-journalctl -u fst-relay -e
+sudo ufw allow 8787/tcp && sudo ufw allow 8787/udp
+sudo dpkg -i fst-relay_0.1.4_amd64.deb
+sudo systemctl status fst-relay && journalctl -u fst-relay -e
 ```
 
-The deb installs the binary to `/usr/bin/fst-relay` and the unit file to `/lib/systemd/system/fst-relay.service`; postinstall runs `enable --now`. The data directory defaults to `/var/lib/fst-relay` (`identity.key` determines the PeerID; a different directory means a different identity).
+The binary lands in `/usr/bin/fst-relay`, the unit in `/lib/systemd/system/`, and post-install runs `enable --now`. Data defaults to `/var/lib/fst-relay` (`identity.key` defines the PeerID — changing the directory changes the identity).
 
-The startup log prints the address to enter in clients:
-
-```text
-/ip4/<SERVER_PUBLIC_IP>/tcp/8787/p2p/<PeerID>
-```
-
-### Command-line flags
+The startup log prints the address to give clients: `/ip4/<PUBLIC_IP>/tcp/8787/p2p/<PeerID>`.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `-data` | `/var/lib/fst-relay` | Data directory (identity and database) |
-| `-port` | `8787` | TCP + UDP (QUIC) listen port |
-| `-name` | `fst-relay` | Name shown in client device lists |
-| `-group` | empty | Single group key: only clients presenting the same key are introduced to each other |
-| `-group-file` | empty | Group table file, one `name:key[:expiry]` per line; mutually exclusive with `-group`; hot-reloaded within 10 seconds, no relay restart needed |
-| `-group-max-terminals` | `0` | Soft cap on online clients per group; over the cap only directory/arrival notifications stop, connections are not dropped |
-| `-exit` | off | Enable the egress (also requires `-exit-allow` listing clients, otherwise nobody can use it) |
-| `-exit-allow` | empty | File: one client PeerID per line; an empty file or omission = deny everyone (fail-closed) |
-| `-exit-token` | empty | Exit token file, one `token[:expiry]` per line; expiry accepts RFC3339 or Unix seconds |
-| `-exit-group` | empty | Only clients in this group may use the exit; same group is exempt from tokens |
-| `-exit-group-slots` | `0` | Per-group concurrent exit session cap; 0 means only the global 1024 limit applies |
+| `-data` | `/var/lib/fst-relay` | Data directory (identity + database) |
+| `-port` | `8787` | TCP + UDP(QUIC) listen port |
+| `-name` | `fst-relay` | Name shown in device lists |
+| `-group` | empty | Single group key: only peers presenting it are introduced to each other |
+| `-group-file` | empty | Group table, one `name:key[:expiry]` per line; hot-reloaded within 10 s; mutually exclusive with `-group` |
+| `-group-max-terminals` | `0` | Per-group soft cap on online terminals; over the cap only directory/arrival notices stop |
+| `-exit` | off | Enable the outbound gateway (still requires a non-empty `-exit-allow`) |
+| `-exit-allow` | empty | File of PeerIDs, one per line; empty or missing means **deny everyone** (fail-closed) |
+| `-exit-token` | empty | Token file, one `token[:expiry]` per line (RFC3339 or Unix seconds) |
+| `-exit-group` | empty | Only this group may use the exit; same-group peers skip the token |
+| `-exit-group-slots` | `0` | Concurrent exit sessions per group; 0 means only the global 1024 applies |
 
-Logs only print the effective group/token counts and PeerIDs, never keys or tokens in plaintext.
-
-Change ports and other flags with a systemd drop-in (reinstalling the deb will not overwrite it):
+Change flags with a systemd drop-in so reinstallation does not overwrite them:
 
 ```bash
 sudo systemctl edit fst-relay
 ```
-
-Write only in the editor section:
 
 ```ini
 [Service]
@@ -389,50 +344,32 @@ ExecStart=
 ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787 -group-file /etc/fst-relay/groups.txt -exit -exit-allow /etc/fst-relay/allow.txt -exit-token /etc/fst-relay/tokens.txt
 ```
 
-```bash
-sudo mkdir -p /etc/fst-relay
-sudo chmod 700 /etc/fst-relay
-# allow.txt: one client PeerID per line (copy it from the settings page)
-# groups.txt: one name:key[:expiry] per line, e.g. office:change-me:2027-01-01T00:00:00Z
-# tokens.txt: one token[:expiry] per line; clients enter the same value as the "exit token" in settings
-sudo systemctl restart fst-relay
-```
-
-Without egress needs, keep the default `ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787`; chat and file transfer still use the circuit relay.
+Without an exit requirement the default `ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787` is enough; chat and file transfer still use the circuit relay.
 
 ---
 
 ## Relay groups and exit authorization
 
-**Group isolation** is for multiple batches of clients behind one relay:
+Groups isolate multiple tenant sets on one relay: clients set a group key (settings page or `config.yaml: group`), the relay validates it with `-group` / `-group-file`, and only same-group peers are introduced. Group entries expire (`name:key[:expiry]`), after which directory and arrival notices stop and HELLO returns `group_error`. The group file is hot-reloaded; deleting a group or rotating its key revokes access immediately.
 
-- Clients enter a string key in settings or `config.yaml: group`; it is only sent to the configured relay.
-- The relay validates with `-group` (single group) or `-group-file` (multi-group table); only same-group clients introduce each other, different groups are invisible to each other.
-- Group table lines are `name:key[:expiry]`; after expiry the relay stops publishing the directory and arrival notifications, and returns `group_error` in the HELLO reply; the settings page shows "group expired / invalid key".
-- **Hot reload**: after editing `-group-file` the relay swaps the table within 10 seconds without a restart; deleting a group, rotating a key, or expiry immediately revokes that group's directory/exit rights and re-sends HELLO. Saving a new `group` on the client also reconnects to the relay immediately.
-- `-group-max-terminals` is a soft limit: over the limit the relay only stops sending directories and arrival notifications, it does not drop connections.
-- Without groups configured, behavior is identical to older versions.
+Exit authorization intersects three layers, checked in the order **allow-list → group → token**:
 
-**Exit authorization** intersects three layers (check order: allowlist → group → token):
+1. `-exit-allow` — PeerID allow-list; always enforced, empty means fail-closed.
+2. `-exit-group` — restrict to one group; same-group peers skip the token.
+3. `-exit-token` — presented as `proxy.token`, compared in constant time, supports multiple expiring tokens.
 
-1. `-exit-allow`: PeerID allowlist; `fst-relay` always enables it, and an empty allowlist means fail-closed.
-2. `-exit-group`: only the specified group may use the exit; the same group is exempt from tokens.
-3. `-exit-token`: clients send it in `proxy.token`; the relay compares in constant time and supports multiple tokens with expiry.
-
-`-exit-group-slots` limits per-group concurrency; global concurrency is 1024. `-exit` requires a non-empty `-exit-allow`, otherwise nobody can use the exit.
-
-Boundaries: grouping is a shared-key model with no online rotation/revocation API; after changing the table the relay must be restarted, and clients must be restarted after config changes. The relay can still see encrypted streams; end-to-end security is provided by libp2p.
+Per-group concurrency comes from `-exit-group-slots`; the global cap is 1024. Groups are a shared-key model: the table is hot-reloadable and supports expiry, but there is no online rotation API yet. The relay still sees the encrypted stream; end-to-end security is libp2p's job.
 
 ---
 
 ## How a client connects to a relay
 
-1. Settings → **Allow cross-network**, enter one relay address per line `/ip4/<PUBLIC_IP>/tcp/8787/p2p/<PeerID>`, save, then **restart FST-Go**.
-2. Once both clients are connected to the same relay, the device page shows the relay card; if the directory is published successfully, the peer also appears under "Online".
-3. If only the relay is listed for now: use "Add device" → PeerID only (DHT) or PeerID + relay.
-4. Click "Chat" on the card to chat; click "Send file" or drag files onto the card to transfer. The card shows "Relay" while traffic is forwarded by the server, and "Direct" after hole punching or when a direct connection already exists.
+1. Settings → **Allow cross-network**, add `/ip4/<PUBLIC_IP>/tcp/8787/p2p/<PeerID>`, save, **restart FST-Go**.
+2. Once both clients reach the relay, a relay card appears in the device page; after the directory is pushed, the peer shows up as online.
+3. If only the relay is listed, use "Add device" → PeerID (DHT) or PeerID + relay.
+4. Card badge: **relay** means traffic is being forwarded, **direct** means a direct path (punched or native).
 
-`config.yaml` lives next to the exe (during development it may also be in the project root). Saving in the settings page rewrites this file: **the group key takes effect immediately by reconnecting to the relay**; other cross-network and proxy items still require a restart.
+`config.yaml` sits next to the executable (project root during development):
 
 ```yaml
 enable_relay: true
@@ -443,16 +380,14 @@ proxy:
   enable: false
   mode: split            # split | global
   exit: /ip4/<PUBLIC_IP>/tcp/8787/p2p/<RELAY_PEER_ID>
-  routes:
-    - 93.184.216.0/24
-  domains:
-    - example.com
-  token: ""              # exit token for relay -exit-token
+  routes: [93.184.216.0/24]
+  domains: [example.com]
+  token: ""              # exit token expected by relay -exit-token
   ipv6: false            # experimental: TUN IPv6 stack + fake AAAA
-  socks_enable: true     # local SOCKS5 inbound (on by default)
+  socks_enable: true
   socks_user: ""
   socks_pass: ""
-  socks_allow: []        # source CIDRs; non-empty requires credentials
+  socks_allow: []        # source CIDRs; non-empty forces RFC1929 auth
   socks_max_conn: 0
   socks_max_per_ip: 0
 ```
@@ -461,24 +396,22 @@ proxy:
 
 ## Network proxy (optional)
 
-Traffic goes out through `fst-relay` over the **same** `/fst/proxy/1.0.0` stream; no extra public port is opened. The proxy requires cross-network to be enabled and a relay configured as the exit.
+Traffic exits through the **same** `/fst/proxy/1.0.0` stream to `fst-relay` — no extra public port. Requires cross-network enabled and a relay configured as exit.
 
-- **Split `split`**: only the listed CIDRs and/or domains (fake-IP `198.18.0.0/15`, DNS `198.18.0.2`) enter the tunnel; with domain rules the `/32` routes of system/public DNS also enter the TUN, and unmatched domains are resolved at the exit.
-- **Global `global`**: the default route enters the TUN; the LAN, system DNS, common public DNS, and the exit relay IP use the original gateway, so the intranet and resolution do not go through the tunnel.
-- **Transport**: IPv4 TCP + UDP; with `proxy.ipv6=true` an IPv6 exit (AAAA, IPv6 literals, `tcp6`/`udp6`) and a TUN v6 stack are added, falling back to IPv4 on failure.
-- **Exit security**: loopback, private, link-local, ULA, and multicast targets are rejected; the allowlist, token, and group take part in authorization whenever configured.
-- **SOCKS5 inbound**: `127.0.0.1:20300` (falls back to a random port when occupied), CONNECT + UDP ASSOCIATE, usable as `socks5h://` in browsers without forcing TUN. Optional RFC1929 credentials, source CIDRs, and concurrency caps; configuring a source allowlist without a password refuses to start the hardened version (falls back to loopback unauthenticated with a warning).
-- **TUN**: requires administrator + `wintun.dll`; with `proxy.ipv6=true` the interface adds `fdfe:1::1/64` and fake AAAA uses `fdfe:2::/64`.
+- **split** — only the listed CIDRs and/or domains enter the tunnel (fake-IP `198.18.0.0/15`, DNS `198.18.0.2`); with domain rules, system/public DNS `/32` also goes into the TUN and unresolved names are resolved at the exit.
+- **global** — default route into the TUN; LAN, system DNS, well-known public DNS and the relay IP keep the original gateway.
+- **Transport** — IPv4 TCP + UDP; `proxy.ipv6=true` adds IPv6 (AAAA, literals, `tcp6`/`udp6`) and a v6 stack, falling back to IPv4 on failure.
+- **Exit safety** — loopback, private, link-local, ULA and multicast targets are refused.
+- **SOCKS5 inbound** — `127.0.0.1:20300` (random port if taken), CONNECT + UDP ASSOCIATE, optional RFC1929 credentials, source CIDRs and concurrency caps. Configuring CIDRs without a password refuses the hardened mode and logs a warning.
 
-On Windows, start `fst.exe` as administrator (not needed when using SOCKS5 only). The relay must run with `-exit` and pass allowlist/token/group checks, otherwise dialing out fails. Failure reasons appear in the proxy status on the settings page and in `%APPDATA%\FST\fst.log` / `journalctl -u fst-relay`.
-
-Verification:
+Verify:
 
 ```powershell
-nslookup www.google.com 8.8.8.8          # global mode should return 198.18.x.x (hijacked)
+nslookup www.google.com 8.8.8.8          # global mode should answer 198.18.x.x
 curl.exe -x socks5h://127.0.0.1:20300 -I --ssl-no-revoke https://www.google.com
-curl.exe -s -o NUL -w "%{http_code}" --ssl-no-revoke https://www.qq.com   # through TUN
 ```
+
+The Android app has **no** TUN or cross-network proxy: proxy settings are simply absent there.
 
 ---
 
@@ -486,38 +419,35 @@ curl.exe -s -o NUL -w "%{http_code}" --ssl-no-revoke https://www.qq.com   # thro
 
 | Location | Content |
 |---|---|
-| `%APPDATA%\FST\identity.key` | Device identity; never share it between two machines that are online at the same time |
-| `%APPDATA%\FST\fst.db` | Devices, chat, transfers, some settings (WAL) |
-| `%APPDATA%\FST\fst.log` | Logs |
-| `config.yaml` (next to the exe or in the project root) | Cross-network switch, relay list, groups, proxy and SOCKS5 |
-| Default download directory | `%USERPROFILE%\Downloads\FST` |
+| `%APPDATA%\FST\identity.key` | Device identity — never share it between two machines online at once |
+| `%APPDATA%\FST\fst.db` | Devices, chats, transfers and some settings (WAL) |
+| `%APPDATA%\FST\fst.log` | Rotating log |
+| `config.yaml` (next to the exe) | Cross-network, relays, group, proxy and SOCKS5 |
+| Default download dir | `%USERPROFILE%\Downloads\FST` |
 
-SQLite uses `PRAGMA user_version` for versioned migrations (currently v6: `transfers.rel_path`, message `kind/recalled/attach/attempts/next_retry`, `peers.avatar`, `room_messages`/`rooms`); upgrades need no manual schema changes.
+Android keeps everything in the app-private directory (`/data/data/com.fst.phone/`); received files are exported to `Downloads/FST` via MediaStore. Uninstalling removes the identity as well.
 
-Full migration: quit FST-Go and copy the whole `%APPDATA%\FST\`. To add another machine, copy only the exe and let it generate a new identity.
+The schema is at **v7** today (v2 `transfers.rel_path`, v3 message `kind/recalled/attach`, v4 `peers.avatar`, v5 retry fields, v6 `rooms`/`room_messages`, v7 message `reply`); upgrades are automatic.
 
-Environment variables: `FST_DATA_DIR`, `FST_PORT`.
+Environment variables: `FST_DATA_DIR`, `FST_PORT` (desktop/service), `FST_LAN_IP` (mobile core, injected by Kotlin).
 
 ---
 
 ## Headless service mode (fst serve)
 
-The same code and data run in the background without a GUI and serve the exact same interface over HTTP — open a browser on any device (Windows / Linux / macOS desktop, phone, tablet) and you get the full desktop experience.
+Same code and data, no window: the full UI is served over HTTP so any browser on any device can use it.
 
 ```bash
-fst serve                      # listens on 127.0.0.1:9797 (local only)
-fst serve -addr 0.0.0.0:9797   # expose to the LAN (a warning is logged; keep the token strong)
+fst serve                      # 127.0.0.1:9797, local only
+fst serve -addr 0.0.0.0:9797   # expose on the LAN (logs a security warning)
 ```
 
-> Windows builds produce two executables: `fst.exe` (GUI subsystem — double-click for the desktop app; serve output is shown via console attachment) and `fst-serve.exe` (console subsystem, built with `go build -o bin\fst-serve.exe .`) — **the recommended way to run the service from a terminal**: cmd waits on it, logs and the startup banner (address, token, Ctrl+C hint) print directly to the terminal, and Ctrl+C shuts it down gracefully.
+- The first start generates a random **access token**, printed in the log and stored in `settings.web_token`; enter it once in the browser (30-day session cookie).
+- Realtime updates go over SSE; P2P traffic still uses 8787, the HTTP port only serves the browser.
+- File upload from the browser is a multipart POST; folder sending is desktop-only.
+- Stop with `Ctrl+C` for a graceful shutdown.
 
-- The **first start** generates a random **access token** and prints it in the log (also stored as `settings.web_token` in the data directory). Enter it once in the browser; the session cookie lasts 30 days.
-- The interface is identical to the desktop app: device discovery, chat (images / files / recall / offline queue), group chat, transfer history, settings.
-- **Sending files from the web**: pick files or drop them onto a device card; the browser uploads them via multipart and the backend runs the usual confirm/progress flow. Sending folders still requires the desktop app.
-- Real-time updates arrive over SSE; P2P traffic still uses the same protocol and port 8787 — the serve HTTP port only serves the browser and is loopback-only by default.
-- Quit with `Ctrl+C` (or `kill`); the node shuts down gracefully.
-
-On a Linux server, keep it running with systemd (adjust `/opt/FST/fst` to your path):
+systemd unit on a Linux server:
 
 ```ini
 # /etc/systemd/system/fst.service
@@ -534,45 +464,96 @@ User=fst
 WantedBy=multi-user.target
 ```
 
-```bash
-systemctl enable --now fst && journalctl -u fst -n 50   # find the access token in the log
-```
+---
+
+## LAN discovery and troubleshooting
+
+Discovery is the one gate every cross-device feature depends on, and historically the most fragile layer. Current implementation:
+
+- **Two service types**: `_fst._tcp` (standard DNS-SD — Android `NsdManager` and iOS `NWBrowser` only accept the underscore-prefixed form) plus the legacy `fst` label.
+- **Instance names carry the full PeerID** (`FST-<PeerID>`): some ROMs drop the TXT record on resolve, leaving the instance name as the only source of the PeerID; the SRV port plus the A record then reconstruct a dialable address.
+- **The phone re-announces every 3 minutes** because some ROMs stop answering multicast queries in doze; **the desktop bridges the legacy label** for the phone (`lanmdns.Bridge`).
+- **Address rewriting**: Android cannot enumerate interfaces (`NETLINK_ROUTE` denied), so libp2p only had `127.0.0.1`; the real IPv4 is injected and `AddrsFactory` rewrites it, hot-updated on Wi-Fi change.
+- **Group membership binds real LAN interfaces only**, avoiding WSL/Hyper-V/APIPA adapters swallowing the multicast.
+
+Troubleshooting ladder (tools under `cmd/`, Windows builds):
+
+| Step | Command | Signal |
+|---|---|---|
+| Are packets flowing? | `mdnsview` | The peer's `_fst._tcp` queries/answers; silence means multicast never left or is filtered |
+| Are they correct? | `mdnssniff` | Hex dump to inspect TXT/SRV (`dnsaddr=`, port, instance name) |
+| Is the adapter usable? | `netdiag` | Per-adapter setsockopt probe — no routable IPv4 / virtual adapter / multicast blocked |
+| Can it be parsed? | `mdnsfake` | Forge a record and test the client's parsing and fallback paths |
+| Is it isolation? | `fstproxy` | Relay TCP through a reachable machine; success means AP/client isolation, not a protocol bug |
+
+The three most common external causes: Windows Firewall blocking UDP 5353, router AP isolation, and the phone being frozen by battery optimisation (mitigated by the foreground service). Details in [docs/局域网发现排查报告.md](docs/局域网发现排查报告.md).
 
 ---
 
-## Development and testing
+## Local development and debugging
 
-```powershell
-go test . ./internal/...
-cd front
-npx vue-tsc --noEmit
+```bash
+go build ./...
+go test ./...                  # unit tests, including the multi-node e2e suite
+go vet ./...
+
+cd front && npx vue-tsc --noEmit
 ```
 
-Proxy tests mock all dialing and never touch real network interfaces; real dual-stack IPv6, NAT hole punching, and Windows TUN need manual regression on real hardware.
+Proxy tests mock all dialing and never touch real adapters; IPv6 dual-stack, NAT punching and Windows TUN need manual regression on real hardware.
 
-Collaboration conventions are in [AGENTS.md](AGENTS.md). Modules, protocols, and gaps are documented in [docs/开发文档.md](docs/开发文档.md); architecture and document review conclusions in [docs/项目架构分析报告.md](docs/项目架构分析报告.md); the evolution history in [docs/开发计划.md](docs/开发计划.md); the proxy failure analysis in [docs/代理故障分析与改进报告.md](docs/代理故障分析与改进报告.md); manual regression steps on real networks in [docs/回归清单.md](docs/回归清单.md); relay troubleshooting in [部署.md](部署.md).
+**Desktop hot reload**: `wails3 dev`.
+
+**Two instances on one machine** (separate identity and port; they will discover each other):
+
+```powershell
+$env:FST_DATA_DIR = "D:\fst-dev-1"; $env:FST_PORT = "8787"; .\bin\fst.exe
+$env:FST_DATA_DIR = "D:\fst-dev-2"; $env:FST_PORT = "8788"; .\bin\fst.exe
+```
+
+**Service mode debugging**:
+
+```bash
+go build -o bin/fst-serve . && ./bin/fst-serve serve -addr 127.0.0.1:9797
+cd front && pnpm build     # rebuild the UI only, then restart serve
+```
+
+**Mobile core without a phone**: `phone/daemon` exposes the same core over loopback HTTP; the script starts it in a temp directory and runs an IPC smoke test:
+
+```bash
+go build -o /tmp/fstcored ./phone/daemon
+phone/scripts/e2e-ipc.sh
+# manual variant (--noproxy matters if a system proxy is running):
+FST_DATA_DIR=/tmp/fstd FST_TOKEN=t0k FST_PORT=18787 /tmp/fstcored
+curl --noproxy '*' -H "X-FST-Token: t0k" http://127.0.0.1:18787/settings
+```
+
+Logs: `fst.log` in the data directory (rotating) on desktop/server; in the app-private directory on Android, viewable from the settings page.
+
+Conventions live in [AGENTS.md](AGENTS.md); mobile details in [phone/README.md](phone/README.md).
 
 ---
 
 ## Status and limitations
 
-- **Windows is currently the primary release target** for the desktop app; the Linux desktop has been verified to build and run on Ubuntu 24.04 (see "Building the desktop app"), while macOS is unverified. The Windows installer requires NSIS, and the main distribution is currently a bare exe.
-- Proxy IPv6 is still experimental and needs manual regression in a real dual-stack environment; global IPv6 mode relies on the system default v6 route for bypass; proxy chaining is not supported.
-- SOCKS5 hardening is off by default: without credentials it remains loopback-only and unauthenticated, so any local process can use it; the source allowlist and concurrency caps must be enabled manually.
-- Relay groups are shared keys and support multiple groups, expiry, and soft caps, but there is no online rotation or revocation API; the relay must be restarted after changing the table.
-- The transfer rate limit is a whole-process total and cannot be set per peer/direction; pre-hashing reads the source file once more.
-- Hash skipping only applies when `prehash` is enabled; skipped symlinks/special files are reported at send time but not persisted.
-- Group chat supports text only, no images/files; history is local only, new members cannot see messages from before they joined, and there is no offline group-message delivery or member management.
-- Offline messages retry automatically at most 20 times (backoff capped at 10 minutes), then become failed and need a manual retry; messages are only delivered after the peer comes online, with no server-side staging.
-- Group chat rooms are derived automatically from "same LAN / same relay group" and cannot be created or invited manually; the LAN room relies on direct connections, and across networks the relay is only suitable for small text messages.
-- The chat recall window is fixed at 2 minutes and only your own messages can be recalled; avatars support PNG/JPEG only, original ≤12KB (base64 ≤16KB), with no cropping or compression.
-- Logging is a single file without rotation, crash reporting, or RTT/traffic statistics.
+- **Three platforms, not feature-identical.** Desktop is the reference; Android deliberately omits TUN/cross-network proxy, group chat, folder sending and multi-device sync. macOS is untested.
+- **The Linux deb is service mode**, not a GTK window build — that target requires CGO on a Linux host (`build/linux/nfpm/nfpm.yaml` is kept for it).
+- **No on-device regression for mobile yet**: the build machine has no Android device or emulator; the APK is verified to compile, sign, unpack and contain an executable core, but runtime layout (especially the four-tile home on narrow screens) needs a real phone.
+- **The APK is debug-signed** — installable, but a release keystore is required for store distribution.
+- IPv6 proxying is experimental; no proxy chaining.
+- SOCKS5 hardening is off by default: loopback, unauthenticated, usable by any local process until credentials are configured.
+- Relay groups are shared-key only (hot reload and expiry supported, no online rotation).
+- Rate limiting is process-wide; pre-hash reads the source file one extra time.
+- Group chat is text-only with local history; no backfill, no member management.
+- Offline messages retry up to 20 times (backoff capped at 10 min), then fail and need a manual retry.
+- Message recall is limited to your own messages within 2 minutes; avatars are capped at ~12KB with no server-side cropping.
+- Mobile sends create a temporary copy (the transfer engine needs a seekable local path, and SAF URIs are not paths).
 
 ---
 
 ## ⚠️ Disclaimer
 
-This software is for learning and research only. Follow local laws and regulations. Any consequences of using this software are borne by the user.
+This software is for learning and research only. Follow your local laws. Any consequences of use are the user's own responsibility.
 
 ---
 
@@ -580,6 +561,4 @@ This software is for learning and research only. Follow local laws and regulatio
 
 Copyright (c) 2026 FST-Go contributors
 
-Released under the [MIT License](LICENSE): free to use, modify, distribute, and use commercially, provided the copyright and license notices are retained. This program is for learning and reference only; do not use it for illegal purposes. It is meant to be helpful but comes with no warranty.
-
-Dependencies remain under their own licenses.
+Released under the [MIT License](LICENSE) — free to use, modify, distribute and use commercially, provided the copyright and license notices are retained. Dependencies remain under their own licenses.
