@@ -1,10 +1,13 @@
+
 [English](README.md) | [简体中文](README_zh.md) | **日本語**
 
 # FST-Go
 
-**File Safe Transfer** — 安全なファイル転送。
+**File Safe Transfer** — LAN / クロスネットワーク対応の P2P ファイル転送とチャット。Go 実装。
 
-Go で実装された LAN / クロスネットワーク対応の P2P デスクトップアプリケーションです。P2P のファイル転送、チャット、任意の自前出口プロキシを提供します。アカウント不要、中央の業務サーバーもありません。各マシンはクライアントであると同時に完全なノードです。同一 LAN 内は自動検出され、ネットワークをまたぐ場合も自分のリレーが 1 台あれば十分です。
+アカウント不要、中央の業務サーバーもありません。各デバイスはクライアントであると同時に完全な libp2p ノードです。同一 LAN 内は自動検出され、ネットワークをまたぐ場合も自分で用意したリレー 1 台があれば十分です。
+
+現在の配布形態（v1.2.0）：**Windows デスクトップ**（`fst.exe`）+ **Android アプリ**（APK）+ **Linux ヘッドレスリレー**（`fst-relay`）+ **Linux サーバーパッケージ**（`fst` deb、ブラウザ UI）。本リポジトリは [MIT License](LICENSE) で公開されています。
 
 
 ### 本プログラムは学習・参考用です。違法な目的には使用しないでください。お役に立てれば幸いですが、作者はいかなる保証も行いません。
@@ -19,9 +22,8 @@ Go で実装された LAN / クロスネットワーク対応の P2P デスク�
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev/)
 [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?logo=vue.js)](https://vuejs.org/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin)](https://kotlinlang.org/)
 [![libp2p](https://img.shields.io/badge/libp2p-v0.50-6e57ff)](https://libp2p.io/)
-
-現在の配布形態：**Windows デスクトップ**（`fst.exe`）+ **Linux ヘッドレスリレー**（`fst-relay`）。本リポジトリは [MIT License](LICENSE) で公開されています。
 
 ---
 
@@ -29,21 +31,23 @@ Go で実装された LAN / クロスネットワーク対応の P2P デスク�
 
 - [解決する課題](#解決する課題)
 - [機能](#機能)
-- [特長](#特長)
+- [設計上の特徴](#設計上の特徴)
 - [アーキテクチャ](#アーキテクチャ)
-- [モジュール](#モジュール)
+- [技術スタック](#技術スタック)
 - [プロトコル](#プロトコル)
-- [オープンソースコンポーネント](#オープンソースコンポーネント)
 - [動作環境](#動作環境)
+- [インストール](#インストール)
 - [デスクトップ版のビルド](#デスクトップ版のビルド)
-- [パッケージングと配布](#パッケージングと配布)
+- [Android 版のビルド](#android-版のビルド)
+- [パッケージングと配布物](#パッケージングと配布物)
 - [リレー：ビルド・デプロイ・設定](#リレービルドデプロイ設定)
 - [リレーのグループと出口認証](#リレーのグループと出口認証)
 - [クライアントからリレーへの接続](#クライアントからリレーへの接続)
 - [ネットワークプロキシ（任意）](#ネットワークプロキシ任意)
-- [ヘッドレスサービスモード（fst serve）](#ヘッドレスサービスモードfst-serve)
 - [設定とデータディレクトリ](#設定とデータディレクトリ)
-- [開発とテスト](#開発とテスト)
+- [ヘッドレスサービスモード（fst serve）](#ヘッドレスサービスモードfst-serve)
+- [LAN ディスカバリとトラブルシューティング](#lan-ディスカバリとトラブルシューティング)
+- [ローカル開発とデバッグ](#ローカル開発とデバッグ)
 - [現状と制限](#現状と制限)
 - [ライセンス](#ライセンス)
 
@@ -51,46 +55,47 @@ Go で実装された LAN / クロスネットワーク対応の P2P デスク�
 
 ## 解決する課題
 
-一般的なクラウドストレージ、メッセンジャー、商用 VPN は、通信・ファイル・連絡先を他人のサーバー上に置きます。オフィスや家庭の LAN、あるいは両方とも NAT 配下にある 2 台の PC は、しばしば次のことだけを望みます。
+一般的なクラウドストレージ、メッセンジャー、商用 VPN は、通信・ファイル・連絡先を他者のサーバーに置きます。オフィスの LAN、家庭内、あるいは両方とも NAT の内側にある 2 台のマシンで必要なのは、たいてい次の 3 点です。
 
-1. **同一サブネット内で互いを認識し、メッセージを送り、ファイルを転送する** — 登録もパブリックアカウントも不要。
-2. **同一サブネットでない場合**、ファイルをクラウドに置く代わりに、自分の VPS を「紹介役／転送役」として使う。
-3. 必要に応じて、無関係なプロキシスタックを追加せず、本機の通信の一部または全部を**自分のリレー経由で出口**させる（自前出口）。
+1. **同一サブネット内で互いを認識し、メッセージとファイルをやり取りする** — 登録もパブリックアカウントも不要。
+2. **同一サブネットにいない場合**は、自前の VPS を紹介役／転送役として使い、クラウドストレージにアップロードしない。
+3. 必要なら、無関係なプロキシスタックを追加せず、**自分のリレー経由で出口通信**を確保する。
 
-FST-Go はこの 3 つを 1 つのプロセス、1 つの業務ポートにまとめます。デバイス ID は libp2p PeerID で、検出・チャット・ファイル・プロキシはすべて暗号化接続上で多重化されます。ファイルはエンドツーエンド暗号化チャネルを通り、ファイル全体の SHA-256 検証とレジューム転送を行い、第三者のクラウドを経由しません。
+FST-Go はこの 3 つを 1 プロセス・1 業務ポートにまとめます。デバイス識別子は libp2p の PeerID で、検出・チャット・ファイル・プロキシはすべて暗号化接続上で多重化されます。ファイルは End-to-End の暗号化チャネルを通り、ファイル全体の SHA-256 検証とレジューム転送を備え、第三者のクラウドを経由しません。
+
+デスクトップ版と Android 版は**同一の Go コア**（`internal/*`）を共有するため、プロトコルは分岐しません。メッセージ送信、転送、レジューム、オフラインキューの挙動はスマートフォンと PC で完全に同じです。
 
 ---
 
 ## 機能
 
-| 機能 | 説明 |
+| 機能 | 内容 |
 |---|---|
-| デバイス検出 | 同一 LAN は mDNS で自動接続。クロスネットワークはリレーのディレクトリ + プライベート DHT。完全な multiaddr、PeerID + リレー、PeerID のみの 3 通りで追加可能 |
-| P2P チャット | 暗号化チャネル、ローカル保存、配送 ACK、未読、リッチテキスト（1 メッセージ ≤32,000 文字）。テキスト / 画像 / ファイルカードの 3 種類の吹き出し。2 分以内の取り消し。アバターは HELLO で同期 |
-| オフラインメッセージ | 相手がオフラインまたはタイムアウトの場合は「送信待ち」にし、15 秒ごとに指数バックオフで再送（上限 10 分・20 回）。相手のオンライン時に即座に送信。吹き出しから手動再送も可能 |
-| グループチャット | GossipSub による自動ルーム。同一 LAN で 1 ルーム、リレーのグループキーを設定すると同グループのルームを追加。テキストのみ、履歴はローカル、メッセージ ID で重複排除。8787 を再利用しポートは追加しない |
-| ファイル転送 | 複数選択 / デバイスカードへドラッグ、確認ダイアログ、信頼済みまたは自動受信、同時 1–8、`.fstpart` によるレジューム、ファイル全体の SHA-256、全体帯域制限、送信前ハッシュによるスキップ、失敗後のバッチ継続 |
-| フォルダ転送 | ディレクトリを再帰送信し、相対構造と空ディレクトリを保持。1 バッチ ≤1000 ファイル、超過分は自動分割。シンボリックリンク / 特殊ファイルは送信前に通知 |
-| クロスネットワーク | AutoNAT、DCUtR ホールパンチング、Circuit Relay。パンチング成功後は冗長なリレー接続を切断し直接接続へ昇格 |
-| 自前リレー | `fst-relay`：サーキットリレー + オンラインディレクトリ + DHT サーバー。グループ分離、グループ有効期限、グループごとのソフト上限 |
-| 出口認証 | `-exit-allow` の PeerID 許可リスト、`-exit-token` の複数トークン + 有効期限、`-exit-group` のグループ制限を積集合で適用。すべて未設定なら従来の動作 |
-| 出口プロキシ | TUN 分割（CIDR / ドメイン）またはグローバル。IPv4 TCP+UDP、任意で実験的な IPv6。ローカル SOCKS5 受信（既定 `127.0.0.1:20300`） |
-| SOCKS5 強化 | 任意の RFC1929 認証、送信元 CIDR 許可リスト、IP 単位 / 全体の同時接続上限。認証情報がなければループバック限定・認証なしのまま |
-| デスクトップ統合 | トレイ、閉じる動作（確認 / トレイ / 終了）、システム通知、自動起動、単一 / 複数インスタンス |
-| 基盤 | `user_version` によるスキーマ移行、オフラインアイコン、4 つの業務ページの zh/en 文言 |
+| デバイス検出 | LAN は mDNS で自動検出（標準 `_fst._tcp` + 旧 `fst` ラベルの二重登録）。ネットワークをまたぐ場合はリレーのディレクトリ + プライベート DHT。multiaddr 全体、PeerID+リレー、PeerID のみのいずれでも追加可能 |
+| クロスプラットフォーム | Windows / Linux / Android が同一プロトコル・同一データモデルを共有。スマホ↔PC、スマホ↔スマホは LAN 内で直接接続（中継不要） |
+| 1 対 1 チャット | 暗号化チャネル、ローカル保存、配送 ACK、未読数、リッチテキスト（1 件 ≤32000 文字）。テキスト／画像／ファイルカードの 3 種のバブル、2 分以内の取り消し、アバターは HELLO で同期 |
+| オフライン送信 | 相手がオフライン／タイムアウトの場合は「送信待ち」として保持し、15 秒間隔・指数バックオフ（上限 10 分、20 回）で自動再送。`peer:online` で即時フラッシュ、バブルから手動再送も可能 |
+| グループチャット | GossipSub による自動ルーム。同一 LAN に 1 つ、リレーのグループキーを設定すると同グループ用のルームも追加。テキストのみ、履歴はローカルのみ、メッセージ ID で重複排除、ポート 8787 を共用 |
+| ファイル転送 | 複数選択／デバイスカードへのドラッグ、確認ダイアログ、信頼済みまたは自動受信、同時 1〜8、`.fstpart` によるレジューム、ファイル全体の SHA-256、全体帯域制限、送信前ハッシュによるスキップ、失敗しても残りを継続 |
+| フォルダ転送 | ディレクトリを再帰送信し、相対パスと空ディレクトリを保持。1 バッチ ≤1000 ファイル、超過分は自動分割 |
+| NAT 越え | AutoNAT、DCUtR によるホールパンチング、Circuit Relay。直結できた時点で冗長なリレー接続を破棄 |
+| 自前リレー | `fst-relay`：サーキットリレー + オンラインディレクトリ + DHT サーバー。グループ分離、キー有効期限、グループ単位のソフト上限に対応 |
+| 出口認証 | PeerID 許可リスト、有効期限付きトークン、グループ制限の 3 層の積集合。未設定なら従来の挙動 |
+| 出口プロキシ | TUN 分割ルーティング（CIDR / ドメイン）またはグローバル。IPv4 の TCP+UDP、実験的な IPv6、ローカル SOCKS5 受信（既定 `127.0.0.1:20300`） |
+| モバイルアプリ | ホームは 4 つのタイル（デバイス／チャット／転送／設定）、フォアグラウンドサービスで常駐、システム DNS-SD による検出、SAF でファイル選択、MediaStore で書き出し、設定はデスクトップと共通 |
+| デスクトップ統合 | トレイ、閉じる動作（確認／トレイ／終了）、ネイティブ通知、ログイン時起動、単一／複数インスタンス |
 
 ---
 
-## 特長
+## 設計上の特徴
 
-- **ID は PeerID であり、IP / MAC ではない。** 秘密鍵は `%APPDATA%\FST\identity.key` にあり、ニックネームやアドレスは変わってもデバイスの主キーは変わりません。
-- **業務ポートは 8787 の 1 つだけ**（TCP + QUIC/UDP が同じ番号）。チャット、ファイル、プロキシはすべて libp2p ストリームを通り、機能ごとに公開ポートを増やしません。唯一の例外はローカル SOCKS5 受信（既定 `127.0.0.1:20300`、ループバックのみ）です。
-- **ファイルのバイト列はフロントエンドに入らない。** Vue はローカルパスだけを受け取り、I/O・ハッシュ・進捗はすべて Go 側で処理し、進捗イベントは間引いて送信します。チャットの画像 / ファイルカードは transfer ID のみを扱います。
-- **中央の業務データベースはない。** チャットと転送履歴はローカルの SQLite にのみ保存され、ノード間でメッセージを同期しません。スキーマ更新は `user_version` 移行で行います。
-- **独自暗号は実装しない。** アプリケーション層のメッセージは libp2p の安全なチャネル（TCP では Noise/TLS、QUIC は標準搭載）を使用します。
-- **出口は fail-closed。** リレーで `-exit` を有効にしても許可リストが空なら、そのマシンをプロキシとして誰も使えません。トークンはダイジェストのみ比較し、平文をログに出しません。
-- **リレーは完全に自前で運用可能。** 公開リレーは同梱していません。設定した相手のアドレスにだけ通信が流れます。
-- **高リスク機能は既定で無効。** プロキシ IPv6、SOCKS5 の LAN 送信元、出口トークン未設定時は従来版と同じ動作です。
+- **識別子は PeerID で、IP や MAC ではない。** 鍵は `%APPDATA%\FST\identity.key`。ニックネームやアドレスは変わってもデバイスの同一性は保たれます。
+- **業務ポートは 8787 の 1 本**（TCP と QUIC/UDP が同番号）。チャット・ファイル・プロキシはすべて libp2p ストリーム上を流れ、追加の待ち受けはループバックの SOCKS5 のみです。
+- **ファイルのバイト列はフロントエンドに渡さない。** Vue が受け取るのはローカルパスだけで、I/O・ハッシュ・進捗は Go 側に閉じます。
+- **1 つのコアを 3 つのシェルで共有。** Android 版はプロトコルを再実装せず、`phone/core` が `internal/node|chat|transfer` を直接利用し、言語境界を越えるのは JSON と基本型のみです。
+- **中央データベースを持たない。** チャットと転送履歴はローカルの SQLite のみ。スキーマ更新は `user_version` のマイグレーションで行います。
+- **暗号は自作しない。** アプリケーションメッセージは libp2p のセキュアチャネル（TCP では Noise/TLS、QUIC は標準装備）を使用します。
+- **出口は fail-closed。** `-exit` を有効にしても許可リストが空なら誰も通せません。トークンはハッシュ同士で比較し、ログに平文を出しません。
 
 ---
 
@@ -100,112 +105,105 @@ FST-Go はこの 3 つを 1 つのプロセス、1 つの業務ポートにま�
 flowchart LR
   UI[Vue 3 UI] -->|同一オリジン /api/fst/*| API[internal/api]
   UI <-->|Wails Events| EVT[イベントバス]
+  KUI[Compose UI] -->|127.0.0.1 HTTP + SSE| DMN[phone/daemon]
+  DMN --> PCORE[phone/core]
   API --> CORE[node / chat / transfer / room]
   API --> PROXY[internal/proxy]
+  PCORE --> CORE
   CORE --> DB[(SQLite)]
   PROXY --> DB
   CORE <--> P2P[libp2p Host :8787]
-  P2P <-->|mDNS / DHT / circuit| PEER[他の FST-Go クライアント]
-  P2P -.->|GossipSub /fst/room| ROOM[同グループまたは同一 LAN のクライアント]
+  P2P <-->|mDNS / DHT / circuit| PEER[他の FST-Go ノード]
+  P2P -.->|GossipSub /fst/room| ROOM[同一 LAN または同一グループ]
   P2P -.->|/fst/proxy/1.0.0| RELAY[fst-relay]
+  KUI -.->|NsdManager| PEER
 ```
 
-デスクトップ版の起動後：データディレクトリを開く → SQLite を移行 → ID を読み込みまたは生成 → libp2p Host を構築 → チャット・転送・グループチャットを接続 → 設定に応じて SOCKS5/TUN を任意で起動 → Wails ウィンドウが `front/dist` を埋め込み、`/api/*` は Go が処理します。
+デスクトップ版の起動順：データディレクトリを開く → SQLite をマイグレーション → 識別情報を読み込みまたは生成 → libp2p ホストを構築 → チャット・転送・ルームを接続 → 設定に応じて SOCKS5/TUN を起動 → Wails が `front/dist` を埋め込み、`/api/*` を Go が処理します。
+
+Android 版の起動順：フォアグラウンドサービスが `libfstcored.so` を子プロセスとして起動（ループバック HTTP + SSE）→ Kotlin 側が自機 IPv4 と DNS-SD の検出結果を注入 → Compose UI が同じ API を HTTP で呼び出します。暗号化・フレーミング・転送はすべて Go 側です。
 
 ---
 
-## モジュール
+## 技術スタック
 
-| パス | 役割 |
+| レイヤー | 採用技術 |
 |---|---|
-| `main.go` / `instance.go` / `config.go` | ウィンドウ、トレイ、インスタンスディレクトリ、`config.yaml`、プロキシの組み立て |
-| `internal/api` | `/api/fst/*`、`{code,message,data}` エンベロープ、読み取り専用メディアエンドポイント |
-| `internal/node` | Host、mDNS、DHT、リレー予約、HELLO/ディレクトリ、在線状態、グループ表、アバター |
-| `internal/chat` | チャット送受信、kind/attach、取り消し、オフラインキューと指数バックオフ、保存、ACK |
-| `internal/room` | GossipSub グループチャット：自動ルーム、topic 導出、LAN 直結構成の検証、ローカル履歴 |
-| `internal/transfer` | ファイル / フォルダの offer、自動分割、ストリームコピー、レジューム、検証、帯域制限、事前ハッシュ、進捗 |
-| `internal/store` | SQLite（WAL、純 Go ドライバ）、`user_version` 移行 |
-| `internal/proto` | プロトコル ID、JSON フレーミング、メッセージ構造 |
-| `internal/proxy` | 出口クライアント、TUN、経路バイパス、fake-IP DNS、SOCKS5、出口トークン、IPv6 |
-| `internal/e2e` | プロセス内マルチノード統合テスト |
-| `cmd/fst-relay` | ヘッドレスリレー / 出口のエントリーポイント |
-| `front/src/views/fst` | デバイス / チャット / 転送 / 設定 |
-| `front/src/api/fst` + `types/api/fst.d.ts` | 唯一の業務 HTTP ラッパーと型契約 |
-| `front/src/store/modules/fst.ts` | 唯一の Wails イベント購読ポイント |
+| 言語 | Go — モジュール `fst`、`go 1.26.0` 指定。本リポジトリは Go 1.27 ツールチェーンでビルド |
+| デスクトップシェル | Wails v3 `v3.0.0-beta.29` — ウィンドウ、トレイ、ネイティブダイアログ、ドラッグ＆ドロップ、通知、単一インスタンス |
+| P2P | go-libp2p v0.50、kad-dht v0.42（プライベート `/fst` DHT）、go-libp2p-pubsub（GossipSub）、AutoNATv2、DCUtR、Circuit Relay |
+| 検出 | `internal/lanmdns`（zeroconf v2 + miekg/dns）。Android は OS の `NsdManager` を使用 |
+| プロキシ | tun2socks v2.6 + gVisor netstack + WireGuard TUN（Windows は `wintun.dll` が必要） |
+| ストレージ | `modernc.org/sqlite`（純 Go、CGO 不要）+ `database/sql` |
+| 設定 / HTTP / ログ | `go.yaml.in/yaml/v3` ／ 標準 `net/http` ／ `log/slog` → ローテーションする `fst.log` |
+| フロントエンド | Vue 3.5 + TypeScript、Vite 8、Element Plus 2.13、Tailwind CSS v4、Pinia 3、vue-router、axios、pnpm |
+| モバイル | Kotlin 2.0.21 + Jetpack Compose（Material 3）、AGP 8.7.3、minSdk 26 / targetSdk 35、arm64-v8a |
+
+UI ↔ Go は libp2p ではなく素の HTTP です。同一オリジンの `/api/fst/*` に `{code, message, data}` のエンベロープ（業務エラーは HTTP 200 + `code: 400`）を返し、デスクトップは Wails イベント、`fst serve` とモバイルは SSE を使います。
 
 ---
 
 ## プロトコル
 
-アプリケーション層のプロトコルは `internal/proto` に定義されています。下位の接続は libp2p が担当します（マルチアドレス、暗号化、多重化）。
+定義は `internal/proto`。トランスポート・暗号化・多重化は libp2p が担当します。
 
-| プロトコル ID | 用途 | フレーム形式 |
+| プロトコル ID | 用途 | フレーミング |
 |---|---|---|
-| `/fst/msg/1.0.0` | 制御とチャット：HELLO、CHAT、CHAT_ACK、CHAT_RECALL、FILE_OFFER/ACCEPT/REJECT/CANCEL、ERROR | uvarint 長 + JSON、1 フレーム ≤ 1 MiB |
-| `/fst/file/1.0.0` | 単一ファイルの内容 | JSON `FileHeader` → 生バイト `[offset,size)` → 32 バイト SHA-256 → JSON `FileResult` |
-| `/fst/proxy/1.0.0` | リレー経由の出口 | JSON `ProxyReq/Resp`。TCP 後は双方向コピー、UDP 後は 2 バイトのビッグエンディアン長プレフィックス付きデータグラム |
-| GossipSub `fst/room/1.0.0/<room>` | グループチャット配信 | 署名付き JSON `RoomMsg`。`lan` は LAN ルーム、`g-<hash>` はグループルーム（ハッシュはキーを漏らさない） |
-| mDNS サービス名 `fst` | LAN 検出 | UDP 5353 マルチキャスト |
-| プライベート Kademlia `/fst` | PeerID によるアドレス検索 | peer routing のみ。公開 DHT には参加しない |
+| `/fst/msg/1.0.0` | 制御とチャット：HELLO、CHAT、CHAT_ACK、CHAT_RECALL、FILE_OFFER/ACCEPT/REJECT/CANCEL、ERROR | uvarint 長 + JSON、1 フレーム ≤1 MiB |
+| `/fst/file/1.0.0` | 単一ファイル本体 | JSON `FileHeader` → 生バイト `[offset,size)` → 32 バイト SHA-256 → JSON `FileResult` |
+| `/fst/proxy/1.0.0` | リレー経由の出口 | JSON `ProxyReq/Resp`。TCP は双方向コピー、UDP は 2 バイトのビッグエンディアン長プレフィックス |
+| GossipSub `fst/room/1.0.0/<room>` | グループチャット | 署名付き JSON `RoomMsg`。`lan` は LAN ルーム、`g-<hash>` はグループルーム（ハッシュから鍵は復元不可） |
+| mDNS `_fst._tcp` / `fst` | LAN 検出 | UDP 5353 マルチキャスト。TXT に `dnsaddr=` と PeerID |
+| プライベート Kademlia `/fst` | PeerID からアドレス解決 | ピアルーティング専用。パブリック DHT には参加しません |
 
-HELLO では、通常ノードは接続済みピアの LAN multiaddr を載せ（peer exchange）、**リレーのみ**が `Directory`（オンラインクライアントの PeerID）を記入します。クライアントは自分が設定したリレーから届いたディレクトリだけを信頼します。`group` は設定したリレーにのみ送信され、リレーの返信には `group_name` / `group_expires` / `group_error` が含まれます。アバターは base64 の小さな画像（≤16KB base64）のみで、ファイルのバイト列は送りません。
-
-プライベートチャットには `queued`（送信待ち）状態があります。相手がオフラインまたはタイムアウトの場合はローカルキューに入り、バックオフしながら自動再送されます。`chat:ack` が状態変化を通知し、`POST /messages/{id}/retry` で手動再送できます。グループメッセージは GossipSub でのみ送信され、`/fst/msg` には入りません。LAN ルームは、元の送信者が直接接続された非 circuit の隣接ピアである場合のみ受け付けます。
-
-`FileInfo` は `{id,name,size,rel_path?,sha256?}` です。`rel_path` はフォルダ転送に使われ、受信側は信頼できない入力として必ずサニタイズする必要があります。`ProxyReq` は `{net,addr,port,family?,token?}` で、`family` が `ip4`/`ip6` を明示し、出口側でデュアルスタックの推測は行いません。
-
-UI と Go の間は libp2p では**ありません**。同一オリジンの HTTP `/api/fst/*`（業務エラーは HTTP 200 + `code: 400`）と Wails イベント（`peer:*`、`chat:*`、`transfer:*`、`proxy:status` など）を使います。
-
----
-
-## オープンソースコンポーネント
-
-直接の依存（バージョンは `go.mod` / `front/package.json` を参照）：
-
-| コンポーネント | 用途 |
-|---|---|
-| [go-libp2p](https://github.com/libp2p/go-libp2p) v0.50 | PeerID、mDNS、Noise/TLS、yamux、TCP+QUIC、AutoNATv2、DCUtR、Circuit Relay |
-| [go-libp2p-kad-dht](https://github.com/libp2p/go-libp2p-kad-dht) v0.42 | プライベート DHT |
-| [go-libp2p-pubsub](https://github.com/libp2p/go-libp2p-pubsub) v0.18 | GossipSub グループチャット配信 |
-| [Wails v3](https://wails.io/) `v3.0.0-beta.29` | デスクトップシェル、トレイ、ネイティブダイアログ、ドラッグ＆ドロップ、フロントエンドの埋め込み |
-| [tun2socks](https://github.com/xjasonlyu/tun2socks) v2.6 + [gVisor](https://gvisor.dev/) | ユーザー空間 TUN スタック |
-| [golang.zx2c4.com/wireguard](https://git.zx2c4.com/wireguard-go) / [Wintun](https://www.wintun.net/) | Windows TUN アダプター（公式署名済み `wintun.dll` が必要） |
-| [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) v1.60 | 純 Go の SQLite。実行時に CGO 不要 |
-| [yaml.v3](https://github.com/go.yaml/yaml) v3.0.5 | `config.yaml` |
-| Vue 3.5、Vite 8、Element Plus 2.13、Tailwind CSS v4、Pinia、vue-router、axios、wangEditor、DOMPurify、Iconify | UI、ビルド、オフラインアイコン |
-
-サードパーティライブラリはそれぞれのライセンスに従います。本リポジトリのソースは MIT で提供されます。
+プロトコル ID は 1.0.0 から変更していないため、**v1.2.0 は旧バージョンと相互接続できます**。`internal/proto.Version`（現在 `1.2.0`）は表示とトラブルシュート専用です。
 
 ---
 
 ## 動作環境
 
-**デスクトップ**
+**デスクトップ** — Windows 10/11 x64 + WebView2（Win11 は通常同梱）。LAN 利用は **TCP/UDP 8787** と **UDP 5353** を開放し、ルーターの AP アイソレーション／クライアント分離を無効化。ネットワーク越えはリレーの 8787 への到達性が必要。TUN プロキシは管理者権限と `wintun.dll` が必要で、SOCKS5 受信はいずれも不要。Linux デスクトップ（Ubuntu 24.04 で確認）は GTK4 + WebKitGTK 6.0 のランタイムが必要です。
 
-- Windows 10/11 x64
-- [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 は通常プリインストール済み）
-- LAN：ファイアウォールで **TCP/UDP 8787** と **UDP 5353**（mDNS）を許可。ルーターの AP / クライアント分離を無効化
-- クロスネットワーク：リレーへの 8787 も許可し、設定で「クロスネットワークを許可」を有効化
-- TUN プロキシ：管理者権限 + exe と同じディレクトリの `wintun.dll`
-- SOCKS5 受信：管理者権限も `wintun.dll` も不要。既定ではループバックのみ待ち受け
-- Linux デスクトップ（Ubuntu 24.04 で確認）：GTK4 + WebKitGTK 6.0 ランタイム。TUN プロキシには root / `CAP_NET_ADMIN` と `/dev/net/tun` が必要
+**Android** — Android 8.0（API 26）以上、arm64-v8a、通知と付近のデバイスの権限。検出には PC と同じ Wi-Fi が必要です。
 
-**サービスモード（fst serve）**
+**サービスモード / deb** — 任意のモダンブラウザ。バックエンドは既定で `127.0.0.1:9797` のみを待ち受けます。
 
-- モダンブラウザーがあれば OK（デスクトップ / Android / iOS）。バックエンドはデスクトップ版と同じマシンでも可
-- 既定では `127.0.0.1:9797` のみ待ち受け。LAN に公開する場合は選択したポートの **TCP** を許可
+**リレー** — パブリック IPv4 を持つ Linux（現行 deb は amd64）。**TCP 8787 と UDP 8787** を開放。出口モードでは対象への外向き TCP/UDP も必要です。
 
-**リレー**
+---
 
-- パブリック IPv4 を持つ Linux（現在の deb は amd64）
-- セキュリティグループ / `ufw` で **TCP 8787 と UDP 8787** を許可
-- 出口モードでは、リレーから対象アドレスへの TCP/UDP 送信も許可
+## インストール
+
+[Releases](https://github.com/xuey490/Fst-go/releases) からプラットフォーム別の成果物を取得します。
+
+| プラットフォーム | ファイル | 補足 |
+|---|---|---|
+| Windows x64 | `fst-1.2.0-windows-amd64.zip` | **推奨**：`fst.exe` + `wintun.dll`（TUN プロキシに必要） |
+| Windows x64 | `fst-1.2.0-windows-amd64.exe` | 単体ファイル。LAN 機能のみで、`wintun.dll` がないと TUN プロキシは使えません |
+| Android arm64 | `fst-1.2.0-android-arm64.apk` | debug 署名。直接インストール可能。ストア配布には release keystore が必要 |
+| Debian / Ubuntu amd64 | `fst_1.2.0-1_amd64.deb` | **サービスモード**（`fst serve`、ブラウザ UI） |
+
+**Windows**：任意の場所に解凍し（`%APPDATA%\FST` は避ける）`fst.exe` を実行します。初回起動で `%APPDATA%\FST\` に識別情報とデータベースが生成されます。
+
+**Android**：APK をサイドロードし、「提供元不明のアプリ」を許可、通知と付近のデバイスを許可します。コアはネイティブライブラリとして展開され、フォアグラウンドサービス内で動作します。
+
+**Debian / Ubuntu**：
+
+```bash
+sudo dpkg -i fst_1.2.0-1_amd64.deb
+fst serve          # アクセス URL・トークン・データディレクトリが表示されます
+# http://127.0.0.1:9797 を開き、トークンを入力
+```
+
+この deb は **サービスビルド**であり、GTK ウィンドウ版ではありません。GTK4 + WebKitGTK のデスクトップ版は Linux 上で CGO を使ってビルドする必要があります。その設定は `build/linux/nfpm/nfpm.yaml` に残してあり、Linux ホストで `nfpm package -f build/linux/nfpm/nfpm.yaml -p deb` を実行すればウィンドウ版のパッケージを作れます。
+
+**初回接続チェック**：同一サブネット、AP／クライアント分離が無効、両側で TCP/UDP 8787 と UDP 5353 が許可されていること。デバイス一覧が空のままなら [LAN ディスカバリとトラブルシューティング](#lan-ディスカバリとトラブルシューティング) の順に切り分けてください。
 
 ---
 
 ## デスクトップ版のビルド
 
-必要なもの：Go 1.26+、Node 22+、[pnpm](https://pnpm.io/)、[Wails v3 CLI](https://v3.wails.io/)（`go.mod` の Wails バージョンと一致させる）。
+必要なもの：Go 1.26+、Node 22+、[pnpm](https://pnpm.io/)、`go.mod` と同じバージョンの [Wails v3 CLI](https://v3.wails.io/)。
 
 ```powershell
 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.29
@@ -220,168 +218,125 @@ Stop-Process -Name fst -ErrorAction SilentlyContinue
 wails3 build
 ```
 
-成果物：`bin/fst.exe`、および `build/windows/wintun/` からコピーされた `bin/wintun.dll`。フロントエンドは exe に埋め込まれるため、配布時に `front/` を持ち運ぶ必要はありません。
+成果物は `bin/fst.exe` と、`build/windows/wintun/` からコピーされた `bin/wintun.dll`。フロントエンドは exe に埋め込まれるため、配布時に `front/` は不要です。
 
-サービスモード用に**コンソールサブシステム**版もビルドしてください（ターミナルにログが直接表示され、コマンドライン利用に推奨）：
+再現性のあるスクリプトも用意しています（アイコンと manifest を含む `.syso` を生成し、`dist/` に出力）。
+
+```bash
+scripts/build-exe.sh          # → bin/fst.exe、dist/fst-<version>-windows-amd64.exe
+```
+
+コンソールサブシステム版（ログがそのまま端末に出るため `serve` に最適）：
 
 ```powershell
 go build -o bin\fst-serve.exe .
 ```
 
-### 実行方法
+### Linux デスクトップ（Ubuntu 24.04 LTS で確認済み）
 
-**デスクトップ版 `fst.exe`**（GUI サブシステム）：
-
-1. `bin\fst.exe` をダブルクリック、またはターミナルで `.\fst.exe` を実行（引数なしで GUI が起動）。
-2. 終了はトレイアイコンまたはウィンドウの閉じるボタンから。
-
-**サービスモード `fst-serve.exe`**（コンソールサブシステム）：
-
-```powershell
-cd bin
-.\fst-serve.exe serve                      # 既定 http://127.0.0.1:9797（ローカルのみ）
-.\fst-serve.exe serve -addr 0.0.0.0:9797   # LAN に公開（TCP を許可）
-```
-
-1. 起動するとターミナルにバナーが表示されます：**アクセス URL / アクセストークン（64 桁の hex）/ データディレクトリ**。以降はログがリアルタイムに流れます。
-2. ブラウザーで URL を開き、トークンを一度入力すればデスクトップ版と同一の UI が使えます（セッション Cookie は 30 日間有効）。
-3. 停止はターミナルで **Ctrl+C**（グレースフル終了）。バックグラウンドプロセスは `Stop-Process -Name fst-serve` で。
-4. トークンを忘れたらデータディレクトリの `fst.log` で `token=` を検索、または SQLite `settings` の `web_token` を削除して再起動すると再生成されます。
-5. 注意：serve とデスクトップ版は同じデータディレクトリとポート 8787 を共有するため、**同時に実行できるのは片方だけ**。併用する場合は `FST_DATA_DIR` / `FST_PORT` で分離してください（下記参照）。
-
-> `fst.exe serve` でもサービスは起動できます（GUI サブシステム。出力はコンソール接続で表示）が、ターミナル運用では `fst-serve.exe` が最も確実です。
-
-ホットリロードでの開発（`bin/` には書き込まない）：
-
-```powershell
-wails3 dev
-```
-
-同じマシンで 2 つ目のインスタンスを起動（ID とポートを分離）：
-
-```powershell
-$env:FST_DATA_DIR = "D:\fst-dev-2"
-$env:FST_PORT = "8788"
-```
-
-### Linux デスクトップ（Ubuntu 24.04 LTS で動作確認済み）
-
-デスクトップ版は GTK4 + WebKitGTK（C ライブラリ、CGO 必須）に依存するため、`GOOS=linux` でのクロスコンパイルは**できません**。Linux 上でビルドしてください：
+GTK4 + WebKitGTK は C ライブラリのため CGO が必須で、`GOOS=linux` でのクロスコンパイルはできません。Linux 上でビルドします。
 
 ```bash
-# システム依存
 sudo apt update
-sudo apt install -y build-essential pkg-config curl git
-sudo apt install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+sudo apt install -y build-essential pkg-config curl git libgtk-4-dev libwebkitgtk-6.0-dev
 
-# ツールチェーン：Go 1.26+、Node 22+、pnpm（各公式ドキュメントに従ってインストール）
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 export PATH=$PATH:$(go env GOPATH)/bin
 
-# フロントエンド（Windows でビルドして front/dist をコピーしても可。embed には dist の存在が必要）
-cd front
-pnpm install
-pnpm build
-cd ..
-
-# ビルド
-wails3 build
+cd front && pnpm install && pnpm build && cd ..
+wails3 build          # → bin/fst
 ```
 
-成果物：`bin/fst`。
-
-サービスモード（ヘッドレス、ブラウザーアクセス）用にコンソール版を追加でビルドするか、依存関係が揃ったマシンで `./bin/fst serve` を直接実行できます：
-
-```bash
-go build -o bin/fst-serve .
-./bin/fst-serve serve          # 既定 127.0.0.1:9797、ブラウザーで完全な UI
-```
-
-> デスクトップ版と同様に GTK 開発ライブラリが必要です。GUI のないサーバーでは別のマシンでビルドしてバイナリをコピーしてください（systemd の例は下のサービスモード章を参照）。
-
-- Ubuntu 22.04 には WebKitGTK 6.0 がないため、GTK3 スタックへ変更します：`sudo apt install -y libgtk-3-dev libwebkit2gtk-4.1-dev`、ビルド時に `-tags gtk3` を付与。Ubuntu 20.04 以前は非対応。
-- glibc 互換性：あるリリースでビルドしたバイナリは、そのリリース以降でのみ動作します。対象に 22.04 が含まれる場合は 22.04 上でビルドしてください。
-- TUN プロキシには root / `CAP_NET_ADMIN` と `/dev/net/tun` が必要です。SOCKS5 受信（`127.0.0.1:20300`）は特権不要です。
-- まず X11 セッションで確認してください。Wayland では WebKitGTK に既知の互換性問題があります。
+Ubuntu 22.04 には WebKitGTK 6.0 がないため、`libgtk-3-dev libwebkit2gtk-4.1-dev` を使い `-tags gtk3` でビルドします。サービスモードだけでよければ `scripts/build-deb.sh`（`CGO_ENABLED=0 -tags server,production`）で GTK を完全に回避できます。
 
 ---
 
-## パッケージングと配布
+## Android 版のビルド
 
-FST-Go を別の Windows マシンで使う場合、**必要なのは `bin/fst.exe` だけ**です（TUN プロキシを使う場合は同じディレクトリの `wintun.dll` も）。`%APPDATA%\FST\` はコピーしないでください。そこにある `identity.key` はデバイス ID であり、同時にオンラインになる 2 台で共有すると PeerID が衝突します。
+モバイルのコアは `jniLibs` に置いた**静的実行ファイル**で、子プロセスとして起動します。Kotlin はループバック HTTP + SSE で通信するため、NDK も gomobile も不要で、`internal/*` をそのまま再利用できます。
 
-任意のインストーラー（ビルド機に [NSIS](https://nsis.sourceforge.io/) が必要）：
+必要なもの：Go 1.26+、Android SDK 35、JDK 17/21、Gradle 8.9+（本リポジトリでは 8.13）。
+
+```bash
+phone/scripts/build-core.sh           # → jniLibs/arm64-v8a/libfstcored.so
+phone/scripts/build-apk.sh            # debug。release も可（keystore 未設定なら debug 署名）
+adb install -r phone/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+ビルドを変更する前に知っておくべき 3 つの制約（`build-core.sh` が自己検査します）：
+
+- **静的・非 PIE であること**：`-buildmode=pie` を付けると `PT_INTERP=/lib/ld-linux-aarch64.so.1`（glibc のパス）が書き込まれ、Android では `execve` が ENOENT で失敗し、プロセスが無言で起動しません。
+- **`GOOS=android` に変更しないこと**：`wlynxg/anet` の Android 分岐が有効になり、`//go:linkname` で `net.zoneCache` を参照します。この記号は Go 1.27 で削除済みで、リンクに失敗し上流にも修正がありません。
+- **ループバック HTTP には `network_security_config` が必須**：targetSdk 28 以上は平文通信を禁止し、API 37 以前はループバックも例外ではありません。未設定だと `/health` が常に失敗し、UI は「コアのヘルスチェックがタイムアウト」と表示します。
+
+モバイルの構成と Android 固有の対応は [phone/README.md](phone/README.md) を参照してください。
+
+---
+
+## パッケージングと配布物
+
+別の Windows マシンへ移すのに必要なのは **`bin/fst.exe` だけ**です（TUN プロキシを使うなら同じディレクトリに `wintun.dll`）。`%APPDATA%\FST\` はコピーしないでください。`identity.key` はデバイス識別子で、2 台同時稼働させると PeerID が衝突します。
+
+任意のインストーラー（[NSIS](https://nsis.sourceforge.io/) が必要）：
 
 ```powershell
 wails3 package
 ```
 
-WebView2 のブートストラッパーが同梱されます。NSIS がない場合は exe をそのまま配布してください。
+3 プラットフォーム分をまとめて生成（出力は `dist/`、.gitignore 済み）：
+
+```bash
+scripts/build-exe.sh                                        # Windows
+scripts/build-deb.sh                                        # Linux サービスモード deb（nfpm が必要）
+phone/scripts/build-core.sh && phone/scripts/build-apk.sh    # Android
+```
+
+`scripts/build-deb.sh` は [nfpm](https://nfpm.goreleaser.com/) を使います：`go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest`。
+
+診断ツールは必要に応じて個別にビルドします（Windows のみ）。例：`go build -o bin\mdnsview.exe .\cmd\mdnsview`。
 
 ---
 
 ## リレー：ビルド・デプロイ・設定
 
-リレーには**UI も mDNS もありません**。役割は 3 つです：Circuit Relay（NAT 配下の 2 クライアント間の中継）、プライベート DHT、接続してきた FST-Go クライアントの PeerID を HELLO ディレクトリへ書き込むこと。`-exit` を付けると出口としても動作します。
-
-### Windows でクロスコンパイルして deb を作る
+リレーには UI も mDNS もありません。役割はサーキットリレー、プライベート DHT、接続中 PeerID のオンラインディレクトリの 3 つです。`-exit` を付けると出口ゲートウェイにもなります。
 
 ```powershell
-$env:GOOS = "linux"
-$env:GOARCH = "amd64"
-$env:CGO_ENABLED = "0"
+$env:GOOS = "linux"; $env:GOARCH = "amd64"; $env:CGO_ENABLED = "0"
 go build -trimpath -ldflags "-s -w" -o bin/fst-relay-linux-amd64 ./cmd/fst-relay
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED
-
-$env:Path += ";$(go env GOPATH)\bin"
 wails3 tool package -name fst-relay -format deb -config ./build/relay/nfpm.yaml -out ./bin
 ```
 
-例えば `bin/fst-relay_0.1.3_amd64.deb` が生成されます。
-
-### Linux へのインストール
-
 ```bash
-sudo ufw allow 8787/tcp
-sudo ufw allow 8787/udp
-sudo dpkg -i fst-relay_0.1.3_amd64.deb
-sudo systemctl status fst-relay
-journalctl -u fst-relay -e
+sudo ufw allow 8787/tcp && sudo ufw allow 8787/udp
+sudo dpkg -i fst-relay_0.1.4_amd64.deb
+sudo systemctl status fst-relay && journalctl -u fst-relay -e
 ```
 
-deb はバイナリを `/usr/bin/fst-relay`、ユニットファイルを `/lib/systemd/system/fst-relay.service` に配置し、postinstall で `enable --now` を実行します。データディレクトリの既定は `/var/lib/fst-relay` です（`identity.key` が PeerID を決めるため、ディレクトリを変えると ID も変わります）。
+バイナリは `/usr/bin/fst-relay`、ユニットは `/lib/systemd/system/` に配置され、postinstall が `enable --now` を実行します。データは既定で `/var/lib/fst-relay`（`identity.key` が PeerID を決めるため、ディレクトリを変えると識別子も変わります）。
 
-起動ログに、クライアントへ入力するアドレスが表示されます：
-
-```text
-/ip4/<サーバーのパブリックIP>/tcp/8787/p2p/<PeerID>
-```
-
-### コマンドラインフラグ
+起動ログにクライアントへ設定するアドレスが出力されます：`/ip4/<PUBLIC_IP>/tcp/8787/p2p/<PeerID>`。
 
 | フラグ | 既定値 | 意味 |
 |---|---|---|
-| `-data` | `/var/lib/fst-relay` | データディレクトリ（ID と DB） |
+| `-data` | `/var/lib/fst-relay` | データディレクトリ（識別情報と DB） |
 | `-port` | `8787` | TCP + UDP(QUIC) の待ち受けポート |
-| `-name` | `fst-relay` | クライアントのデバイス一覧に表示される名前 |
-| `-group` | 空 | 単一グループキー。同じキーを提示したクライアント同士だけを相互紹介 |
-| `-group-file` | 空 | グループ表ファイル。1 行 1 エントリ `name:key[:expiry]`。`-group` とは排他。変更後 10 秒以内にホットリロードされ、リレーの再起動は不要 |
-| `-group-max-terminals` | `0` | グループごとのオンラインクライアントのソフト上限。超過時はディレクトリ / 到達通知の送信のみ停止し、接続は切断しない |
-| `-exit` | 無効 | 出口を有効化（`-exit-allow` でクライアントを列挙しないと誰も使えない） |
-| `-exit-allow` | 空 | ファイル。1 行 1 クライアント PeerID。空ファイルまたは省略 = 全員拒否（fail-closed） |
-| `-exit-token` | 空 | 出口トークンファイル。1 行 `token[:expiry]`。expiry は RFC3339 または Unix 秒 |
-| `-exit-group` | 空 | このグループのクライアントだけが出口を使える。同グループはトークン不要 |
-| `-exit-group-slots` | `0` | グループごとの同時出口セッション上限。0 は全体の 1024 制限のみ |
+| `-name` | `fst-relay` | デバイス一覧に表示される名前 |
+| `-group` | 空 | 単一グループキー。同じキーを示す端末同士だけを相互紹介 |
+| `-group-file` | 空 | グループ表。1 行 `name:key[:expiry]`。`-group` とは排他。変更は 10 秒以内にホットリロード |
+| `-group-max-terminals` | `0` | グループごとのオンライン端末ソフト上限。超過時はディレクトリ／到達通知のみ停止 |
+| `-exit` | 無効 | 出口ゲートウェイを有効化（空でない `-exit-allow` が必須） |
+| `-exit-allow` | 空 | PeerID を 1 行 1 件で列挙したファイル。空または未指定は**全拒否**（fail-closed） |
+| `-exit-token` | 空 | トークンファイル。1 行 `token[:expiry]`（RFC3339 または Unix 秒） |
+| `-exit-group` | 空 | 指定グループのみ出口を許可。同グループはトークン不要 |
+| `-exit-group-slots` | `0` | グループごとの同時出口セッション上限。0 は全体 1024 のみ適用 |
 
-ログには有効なグループ数 / トークン数と PeerID だけを出力し、キーやトークンの平文は出力しません。
-
-ポートなどの変更は systemd の drop-in で行います（deb の再インストールでも上書きされません）：
+フラグの変更は systemd の drop-in で行います（deb 再インストールで消えません）。
 
 ```bash
 sudo systemctl edit fst-relay
 ```
-
-編集領域にだけ次を記述します：
 
 ```ini
 [Service]
@@ -389,70 +344,50 @@ ExecStart=
 ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787 -group-file /etc/fst-relay/groups.txt -exit -exit-allow /etc/fst-relay/allow.txt -exit-token /etc/fst-relay/tokens.txt
 ```
 
-```bash
-sudo mkdir -p /etc/fst-relay
-sudo chmod 700 /etc/fst-relay
-# allow.txt：1 行 1 クライアント PeerID（設定画面からコピー可能）
-# groups.txt：1 行 name:key[:expiry]。例 office:change-me:2027-01-01T00:00:00Z
-# tokens.txt：1 行 token[:expiry]。クライアントの設定画面「出口トークン」に同じ値を入力
-sudo systemctl restart fst-relay
-```
-
-出口が不要な場合は既定の `ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787` のままで構いません。チャットとファイル転送は引き続きサーキットリレーを利用します。
+出口が不要なら既定の `ExecStart=/usr/bin/fst-relay -data /var/lib/fst-relay -port 8787` のままで十分です。チャットとファイル転送はサーキットリレー経由で動作します。
 
 ---
 
 ## リレーのグループと出口認証
 
-**グループ分離**は、1 台のリレーに複数のクライアント群を収容するための仕組みです。
+グループは 1 台のリレー上で複数の端末群を分離します。クライアントは設定画面または `config.yaml: group` にグループキーを設定し、リレーは `-group` / `-group-file` で検証します。同じグループの端末だけが相互紹介され、他グループからは見えません。グループ行は `name:key[:expiry]` で、期限切れ後はディレクトリ配信と到達通知が止まり、HELLO の応答に `group_error` が入ります。グループ表はホットリロードされ、削除やキー変更は即座に反映されます。
 
-- クライアントは設定画面または `config.yaml: group` に文字列キーを入力し、設定したリレーにのみ送信します。
-- リレーは `-group`（単一グループ）または `-group-file`（複数グループ表）で検証し、同グループのクライアント同士だけを相互紹介します。異なるグループ同士は互いに見えません。
-- グループ表の行は `name:key[:expiry]`。有効期限が切れると、リレーはディレクトリと到達通知の配信を停止し、HELLO の返信に `group_error` を含めます。設定画面には「グループの有効期限切れ / キー無効」と表示されます。
-- **グループ表のホットリロード**：`-group-file` を変更すると、リレーは再起動なしで 10 秒以内に表を差し替えます。グループの削除、キーの変更、有効期限切れは、そのグループのディレクトリ / 出口権限を即座に失効させ、HELLO を再送します。クライアント側で新しい `group` を保存した場合も、即座にリレーへ再接続します。
-- `-group-max-terminals` はソフト上限です。超過時はディレクトリと到達通知の送信だけを停止し、接続は切断しません。
-- グループを設定しない場合の動作は従来版と完全に同じです。
+出口認証は 3 層の積集合で、**許可リスト → グループ → トークン** の順に検証します。
 
-**出口認証**は 3 層の積集合です（検証順：許可リスト → グループ → トークン）。
+1. `-exit-allow` — PeerID の許可リスト。常に有効で、空なら fail-closed。
+2. `-exit-group` — 指定グループのみ許可。同グループはトークン不要。
+3. `-exit-token` — `proxy.token` として提示。定時間比較で、複数トークンと有効期限に対応。
 
-1. `-exit-allow`：PeerID の許可リスト。`fst-relay` では常に有効で、空の許可リストは fail-closed を意味します。
-2. `-exit-group`：指定グループのみ出口を利用可能。同グループはトークン不要。
-3. `-exit-token`：クライアントが `proxy.token` で送信。リレーは定数時間で比較し、複数トークンと有効期限に対応します。
-
-`-exit-group-slots` はグループごとの同時接続を制限し、全体の同時接続は 1024 です。`-exit` には空でない `-exit-allow` が必須で、なければ誰も出口を使えません。
-
-境界：グループは共有キーモデルで、オンラインでのローテーション / 失効 API はありません。表の変更後はリレーの再起動が必要で、クライアントも設定変更後に再起動が必要です。リレーは暗号化されたストリーム自体は見えますが、エンドツーエンドの安全性は libp2p が保証します。
+グループ単位の同時数は `-exit-group-slots`、全体上限は 1024 です。グループは共有鍵モデルで、表のホットリロードと期限切れには対応しますが、オンラインでのローテーション API はまだありません。リレーは暗号化ストリーム自体は通過させますが、End-to-End の安全性は libp2p が担保します。
 
 ---
 
 ## クライアントからリレーへの接続
 
-1. 設定 → **クロスネットワークを許可** を開き、リレーアドレスを 1 行ずつ `/ip4/<パブリックIP>/tcp/8787/p2p/<PeerID>` の形式で入力し、保存後に **FST-Go を再起動**します。
-2. 2 台のクライアントが同じリレーに接続すると、デバイスページにリレーのカードが表示されます。ディレクトリの配信に成功すると、相手も「オンラインデバイス」に現れます。
-3. 一覧にリレーしかない場合は、「デバイスを追加」→ PeerID のみ（DHT）または PeerID + リレーを使用します。
-4. チャットはカードの「チャット」、ファイルは「ファイルを送信」またはカードへのドラッグで開始します。カードが「リレー」ならサーバー経由で転送中、「直接」ならホールパンチング成功または元から直接接続できる状態です。
+1. 設定 → **クロスネットワークを許可** を開き、`/ip4/<PUBLIC_IP>/tcp/8787/p2p/<PeerID>` を 1 行追加して保存し、**FST-Go を再起動**します。
+2. 両方の端末が同じリレーに接続すると、デバイス画面にリレーのカードが現れます。ディレクトリが配信されれば相手も「オンライン」に表示されます。
+3. リレーだけが表示される場合は「デバイスを追加」から PeerID（DHT）または PeerID + リレーで追加します。
+4. カードのバッジが **リレー** なら転送中、**直接** ならホールパンチング済みまたは元から直結です。
 
-`config.yaml` は exe と同じディレクトリに置きます（開発時はプロジェクトルートでも可）。設定画面で保存するとこのファイルが書き換わります。**グループキーは保存後すぐにリレーへ再接続して有効になります**が、その他のクロスネットワーク / プロキシ関連項目は再起動が必要です。
+`config.yaml` は実行ファイルと同じディレクトリ（開発時はプロジェクトルート）に置きます。
 
 ```yaml
 enable_relay: true
 relays:
   - /ip4/<PUBLIC_IP>/tcp/8787/p2p/<RELAY_PEER_ID>
-group: ""                # リレーのグループキー。空 = グループなし
+group: ""                # リレーのグループキー。空ならグループなし
 proxy:
   enable: false
   mode: split            # split | global
   exit: /ip4/<PUBLIC_IP>/tcp/8787/p2p/<RELAY_PEER_ID>
-  routes:
-    - 93.184.216.0/24
-  domains:
-    - example.com
+  routes: [93.184.216.0/24]
+  domains: [example.com]
   token: ""              # リレーの -exit-token に対応する出口トークン
   ipv6: false            # 実験的：TUN IPv6 スタック + fake AAAA
-  socks_enable: true     # ローカル SOCKS5 受信（既定で有効）
+  socks_enable: true
   socks_user: ""
   socks_pass: ""
-  socks_allow: []        # 送信元 CIDR。空でない場合は認証情報が必須
+  socks_allow: []        # 送信元 CIDR。非空なら RFC1929 認証が必須
   socks_max_conn: 0
   socks_max_per_ip: 0
 ```
@@ -461,24 +396,22 @@ proxy:
 
 ## ネットワークプロキシ（任意）
 
-**同じ** `/fst/proxy/1.0.0` ストリームで `fst-relay` から出口へ出ます。追加の公開ポートは開きません。プロキシを使うには、クロスネットワークを有効にし、出口としてリレーを設定しておく必要があります。
+通信は**同じ** `/fst/proxy/1.0.0` ストリームで `fst-relay` から出ます。追加のパブリックポートは開けません。クロスネットワークを有効にし、リレーを出口として設定しておく必要があります。
 
-- **分割 `split`**：列挙した CIDR および / またはドメイン（fake-IP `198.18.0.0/15`、DNS `198.18.0.2`）だけをトンネルへ送ります。ドメインルールがある場合、システム / パブリック DNS の `/32` も TUN に入り、一致しないドメインは出口側で解決されます。
-- **グローバル `global`**：既定ルートを TUN に入れます。LAN、システム DNS、一般的なパブリック DNS、出口リレーの IP は元のゲートウェイを使い、イントラネットと名前解決をトンネルに巻き込みません。
-- **転送**：IPv4 TCP + UDP。`proxy.ipv6=true` の場合は IPv6 出口（AAAA、IPv6 リテラル、`tcp6`/`udp6`）と TUN の v6 スタックを追加し、失敗時は IPv4 へ自動的にフォールバックします。
-- **出口の安全性**：ループバック、プライベート、リンクローカル、ULA、マルチキャスト宛先を拒否します。許可リスト、トークン、グループは設定されていれば認証に参加します。
-- **SOCKS5 受信**：`127.0.0.1:20300`（使用中ならランダムポートへフォールバック）。CONNECT + UDP ASSOCIATE に対応し、ブラウザから `socks5h://` で利用できます。TUN の強制はありません。任意で RFC1929 認証、送信元 CIDR、同時接続上限を設定できます。送信元許可リストを設定してパスワードがない場合、強化版は起動を拒否します（ループバック限定・認証なしへフォールバックし、Warn を記録）。
-- **TUN**：管理者権限 + `wintun.dll` が必要です。`proxy.ipv6=true` のときインターフェースに `fdfe:1::1/64` を追加し、fake AAAA は `fdfe:2::/64` を使用します。
+- **split** — 指定した CIDR とドメインのみトンネルへ（fake-IP `198.18.0.0/15`、DNS `198.18.0.2`）。ドメインルールがある場合、システム／パブリック DNS の `/32` も TUN に入り、未解決のドメインは出口側で解決されます。
+- **global** — 既定ルートを TUN へ。LAN、システム DNS、主要なパブリック DNS、リレー IP は元のゲートウェイを使います。
+- **トランスポート** — IPv4 の TCP + UDP。`proxy.ipv6=true` で IPv6（AAAA、リテラル、`tcp6`/`udp6`）と v6 スタックを追加し、失敗時は IPv4 に自動フォールバックします。
+- **出口の安全性** — ループバック、プライベート、リンクローカル、ULA、マルチキャスト宛は拒否します。
+- **SOCKS5 受信** — `127.0.0.1:20300`（使用中ならランダムポート）。CONNECT と UDP ASSOCIATE に対応し、RFC1929 認証、送信元 CIDR、同時接続上限を任意で設定できます。CIDR のみ設定してパスワードがない場合は強化モードを拒否し、警告を記録します。
 
-Windows では `fst.exe` を管理者として起動します（SOCKS5 のみの場合は不要）。リレーは `-exit` 付きで起動し、許可リスト / トークン / グループの検証を通る必要があります。通らなければ外へは接続できません。失敗理由は設定画面のプロキシ状態、および `%APPDATA%\FST\fst.log` / `journalctl -u fst-relay` で確認できます。
-
-確認方法：
+確認：
 
 ```powershell
-nslookup www.google.com 8.8.8.8          # グローバルモードでは 198.18.x.x が返る（ハイジャック）
+nslookup www.google.com 8.8.8.8          # グローバルモードでは 198.18.x.x が返る
 curl.exe -x socks5h://127.0.0.1:20300 -I --ssl-no-revoke https://www.google.com
-curl.exe -s -o NUL -w "%{http_code}" --ssl-no-revoke https://www.qq.com   # TUN 経由
 ```
+
+Android 版には TUN もクロスネットワークプロキシも**ありません**。プロキシ関連の設定項目自体が表示されません。
 
 ---
 
@@ -486,38 +419,35 @@ curl.exe -s -o NUL -w "%{http_code}" --ssl-no-revoke https://www.qq.com   # TUN 
 
 | 場所 | 内容 |
 |---|---|
-| `%APPDATA%\FST\identity.key` | デバイス ID。同時にオンラインになる 2 台で共有しないこと |
-| `%APPDATA%\FST\fst.db` | デバイス、チャット、転送、一部の設定（WAL） |
-| `%APPDATA%\FST\fst.log` | ログ |
-| `config.yaml`（exe の隣またはプロジェクトルート） | クロスネットワークのスイッチ、リレー一覧、グループ、プロキシ、SOCKS5 |
+| `%APPDATA%\FST\identity.key` | デバイス識別情報。同時稼働する 2 台で共有しないこと |
+| `%APPDATA%\FST\fst.db` | デバイス、チャット、転送、一部設定（WAL） |
+| `%APPDATA%\FST\fst.log` | ログ（サイズでローテーション） |
+| `config.yaml`（exe の隣） | クロスネットワーク、リレー、グループ、プロキシ、SOCKS5 |
 | 既定のダウンロード先 | `%USERPROFILE%\Downloads\FST` |
 
-SQLite は `PRAGMA user_version` によるバージョン付き移行を使用します（現在 v6：`transfers.rel_path`、メッセージの `kind/recalled/attach/attempts/next_retry`、`peers.avatar`、`room_messages`/`rooms`）。アップグレード時に手作業でのスキーマ変更は不要です。
+Android 版はすべてアプリ専用領域（`/data/data/com.fst.phone/`）に保存します。受信ファイルは MediaStore 経由で `Downloads/FST` に書き出します。アンインストールすると識別情報も削除されます。
 
-全体の移行：FST-Go を終了して `%APPDATA%\FST\` を丸ごとコピーします。単に 1 台追加する場合は exe だけをコピーし、新しい ID を生成させてください。
+スキーマは現在 **v7**（v2 `transfers.rel_path`、v3 メッセージ `kind/recalled/attach`、v4 `peers.avatar`、v5 再送フィールド、v6 `rooms`/`room_messages`、v7 メッセージ `reply`）。更新は自動です。
 
-環境変数：`FST_DATA_DIR`、`FST_PORT`。
+環境変数：`FST_DATA_DIR`、`FST_PORT`（デスクトップ／サービス）、`FST_LAN_IP`（モバイルコア、Kotlin が注入）。
 
 ---
 
 ## ヘッドレスサービスモード（fst serve）
 
-同じコードとデータを GUI なしでバックグラウンドに常駐させ、HTTP 経由でデスクトップ版と同一の完全な UI を提供します。デバイス（Windows / Linux / macOS デスクトップ、スマホ、タブレット）のブラウザーを開くだけで使えます。
+同じコードと同じデータのまま、ウィンドウなしで HTTP 上に完全な UI を提供します。任意のデバイスのブラウザから利用できます。
 
 ```bash
-fst serve                      # 既定で 127.0.0.1:9797 を待ち受け（ローカルのみ）
-fst serve -addr 0.0.0.0:9797   # LAN に公開（ログに警告が出ます。トークンを強固にしてください）
+fst serve                      # 127.0.0.1:9797、ローカルのみ
+fst serve -addr 0.0.0.0:9797   # LAN に公開（セキュリティ警告がログに出ます）
 ```
 
-> Windows のビルド生成物は 2 つ：`fst.exe`（GUI サブシステム。ダブルクリックでデスクトップ版、serve 時はコンソール接続により出力を表示）と `fst-serve.exe`（コンソールサブシステム。`go build -o bin\fst-serve.exe .` で生成）——**ターミナルからサービスを動かすならこちらを推奨**：cmd がプロセスを待ち受け、ログとスタートアップバナー（アドレス・トークン・Ctrl+C の案内）が直接表示され、Ctrl+C でグレースフルに停止します。
+- 初回起動時にランダムな**アクセストークン**を生成し、ログに出力します（`settings.web_token` にも保存）。ブラウザで一度入力すれば以降はセッション Cookie（30 日）で通ります。
+- リアルタイム更新は SSE。P2P 通信は従来どおり 8787 を使い、HTTP ポートはブラウザ専用です。
+- ブラウザからのファイル送信は multipart POST。フォルダ送信はデスクトップ版のみです。
+- 終了は `Ctrl+C`（グレースフルシャットダウン）。
 
-- **初回起動時**にランダムな**アクセストークン**を生成してログに出力します（データディレクトリの `fst.db` 内 `settings.web_token` にも保存）。ブラウザーでアクセス先を開き、一度入力すれば OK（セッション Cookie は 30 日間有効）。
-- UI はデスクトップ版と同一：デバイス検出、チャット（画像 / ファイル / 取り消し / オフラインキュー）、グループチャット、転送履歴、設定。
-- **Web からのファイル送信**：ファイルを選ぶかデバイスカードへドラッグ＆ドロップすると、ブラウザーから multipart でアップロードされ、以降の確認／進捗はデスクトップと同じフローです。フォルダー送信はデスクトップ版をご利用ください。
-- リアルタイム更新は SSE で配信。P2P 通信は従来どおり同一プロトコル・ポート 8787 を使用し、serve の HTTP ポートはブラウザー専用で、既定では外部に公開されません。
-- 終了は `Ctrl+C`（または `kill`）。ノードはグレースフルにシャットダウンします。
-
-Linux サーバーでは systemd での常駐を推奨します（`/opt/FST/fst` は実際のパスに合わせてください）：
+Linux サーバーでは systemd での常駐を推奨します。
 
 ```ini
 # /etc/systemd/system/fst.service
@@ -534,45 +464,96 @@ User=fst
 WantedBy=multi-user.target
 ```
 
-```bash
-systemctl enable --now fst && journalctl -u fst -n 50   # アクセストークンはログを確認
-```
+---
+
+## LAN ディスカバリとトラブルシューティング
+
+検出層はクロスデバイス機能すべての前提であり、歴史的に最も壊れやすい部分でした。現在の実装は次のとおりです。
+
+- **2 つのサービス種別**：`_fst._tcp`（標準 DNS-SD。Android の `NsdManager` と iOS の `NWBrowser` はアンダースコア始まりの正規形式しか受け付けません）と、旧来の `fst` ラベル。
+- **インスタンス名に完全な PeerID を含める**（`FST-<PeerID>`）：一部の ROM は resolve 時に TXT を落とすため、インスタンス名が PeerID の唯一の情報源になります。SRV のポートと A レコードを組み合わせて接続可能なアドレスを復元します。
+- **スマートフォンは 3 分ごとに再アナウンス**します（一部 ROM は省電力時にマルチキャスト問い合わせに応答しなくなるため）。**デスクトップ側は旧ラベルを代行アナウンス**します（`lanmdns.Bridge`）。
+- **アドレス書き換え**：Android はインターフェースを列挙できない（`NETLINK_ROUTE` が拒否される）ため、libp2p のアドレスは `127.0.0.1` だけになります。実際の IPv4 を注入し、`AddrsFactory` で書き換えます（Wi-Fi 変更時はホットアップデート）。
+- **マルチキャストは実 LAN インターフェースのみにバインド**し、WSL / Hyper-V / APIPA の仮想アダプタがパケットを吸わないようにします。
+
+切り分けの順序（ツールは `cmd/` 配下、Windows のみビルド）：
+
+| 手順 | コマンド | 判断材料 |
+|---|---|---|
+| パケットは流れているか | `mdnsview` | 相手の `_fst._tcp` クエリ／応答。無反応ならマルチキャストが出ていないか遮断されている |
+| 内容は正しいか | `mdnssniff` | 16 進ダンプで TXT/SRV（`dnsaddr=`、ポート、インスタンス名）を確認 |
+| アダプタは使えるか | `netdiag` | アダプタごとの setsockopt 検査。ルーティング可能な IPv4 がない／仮想アダプタ／マルチキャスト禁止を判別 |
+| 解析できるか | `mdnsfake` | レコードを偽装し、クライアントの解析とフォールバックを検証 |
+| 分離ではないか | `fstproxy` | 到達可能なマシンで TCP 中継。接続できれば AP／クライアント分離が原因 |
+
+外部要因で多いのは、Windows ファイアウォールによる UDP 5353 の遮断、ルーターの AP アイソレーション、省電力によるアプリの凍結（フォアグラウンドサービスで緩和）です。詳細は [docs/局域网发现排查报告.md](docs/局域网发现排查报告.md) を参照してください。
 
 ---
 
-## 開発とテスト
+## ローカル開発とデバッグ
 
-```powershell
-go test . ./internal/...
-cd front
-npx vue-tsc --noEmit
+```bash
+go build ./...
+go test ./...                  # ユニットテスト（複数ノードの e2e を含む）
+go vet ./...
+
+cd front && npx vue-tsc --noEmit
 ```
 
-プロキシのテストはすべてダイヤルをモックし、実ネットワークインターフェースには触れません。実際のデュアルスタック IPv6、NAT ホールパンチング、Windows TUN は実機での手動リグレッションが必要です。
+プロキシのテストはダイヤルをすべてモックし、実アダプタには触れません。IPv6 デュアルスタック、NAT ホールパンチング、Windows TUN は実機での手動回帰が必要です。
 
-協業ルールはルートの [AGENTS.md](AGENTS.md) を参照してください。モジュール、プロトコル、未実装項目の詳細は [docs/开发文档.md](docs/开发文档.md)、アーキテクチャとドキュメント照合の結論は [docs/项目架构分析报告.md](docs/项目架构分析报告.md)、経緯は [docs/开发计划.md](docs/开发计划.md)、プロキシ障害の分析は [docs/代理故障分析与改进报告.md](docs/代理故障分析与改进报告.md)、実ネットワークでの手動リグレッション手順は [docs/回归清单.md](docs/回归清单.md)、リレーのトラブルシューティングは [部署.md](部署.md) にあります。
+**デスクトップのホットリロード**：`wails3 dev`。
+
+**同一マシンで 2 インスタンス**（識別情報とポートを分離。互いに検出されます）：
+
+```powershell
+$env:FST_DATA_DIR = "D:\fst-dev-1"; $env:FST_PORT = "8787"; .\bin\fst.exe
+$env:FST_DATA_DIR = "D:\fst-dev-2"; $env:FST_PORT = "8788"; .\bin\fst.exe
+```
+
+**サービスモードのデバッグ**：
+
+```bash
+go build -o bin/fst-serve . && ./bin/fst-serve serve -addr 127.0.0.1:9797
+cd front && pnpm build     # UI だけ再ビルドして serve を再起動
+```
+
+**スマートフォンなしでモバイルコアを検証**：`phone/daemon` が同じコアをループバック HTTP で公開します。スクリプトは一時ディレクトリで起動し、IPC のスモークテストを実行します。
+
+```bash
+go build -o /tmp/fstcored ./phone/daemon
+phone/scripts/e2e-ipc.sh
+# 手動の場合（システムプロキシがある場合は --noproxy が重要）：
+FST_DATA_DIR=/tmp/fstd FST_TOKEN=t0k FST_PORT=18787 /tmp/fstcored
+curl --noproxy '*' -H "X-FST-Token: t0k" http://127.0.0.1:18787/settings
+```
+
+ログ：デスクトップ／サーバーはデータディレクトリの `fst.log`（ローテーション）。Android はアプリ専用領域にあり、設定画面から確認できます。
+
+開発規約は [AGENTS.md](AGENTS.md)、モバイルの詳細は [phone/README.md](phone/README.md) を参照してください。
 
 ---
 
 ## 現状と制限
 
-- **デスクトップ版は現在 Windows が主要な配布対象です**。Linux デスクトップは Ubuntu 24.04 でのビルドと動作を確認済み（「デスクトップ版のビルド」参照）、macOS は未検証です。Windows インストーラーには NSIS が必要で、現在は主に exe を直接配布しています。
-- プロキシ IPv6 は依然として実験的な機能で、実際のデュアルスタック環境での手動リグレッションが必要です。IPv6 グローバルモードはシステムの既定 v6 ルートによるバイパスに依存します。プロキシチェーンには対応していません。
-- SOCKS5 の強化は既定で無効です。認証情報がない場合はループバック限定・認証なしのままで、同一マシンの任意のプロセスが利用できます。送信元許可リストと同時接続上限は手動で有効化する必要があります。
-- リレーのグループは共有キーで、複数グループ / 有効期限 / ソフト上限に対応しますが、オンラインでのローテーションや失効 API はありません。表の変更後は再起動が必要です。
-- 転送の帯域制限はプロセス全体の合計で、相手や方向ごとには設定できません。事前ハッシュは元ファイルをもう一度読み込みます。
-- ハッシュによるスキップは `prehash` が有効な場合のみ機能します。スキップされたシンボリックリンク / 特殊ファイルは送信時に通知されるだけで、DB には保存されません。
-- グループチャットはテキストのみで、画像 / ファイルには対応しません。履歴はローカルのみで、新規参加者は参加前のメッセージを見られず、オフラインのグループメッセージ配信やメンバー管理もありません。
-- オフラインメッセージの自動再送は最大 20 回（バックオフ上限 10 分）で、その後は失敗となり手動再送が必要です。メッセージは相手のオンライン後にのみ配信され、サーバー側での一時保管は行いません。
-- グループチャットのルームは「同一 LAN / 同一リレーグループ」で自動的に決まり、手動での作成や招待はできません。LAN ルームは直接接続に依存し、クロスネットワークではリレー経由の小さなテキストメッセージにのみ適しています。
-- チャットの取り消し可能時間は 2 分で、自分が送信したメッセージのみ取り消せます。アバターは PNG/JPEG のみ、元画像 ≤12KB（base64 ≤16KB）で、切り抜きや圧縮はありません。
-- ログは単一ファイルで、ローテーション、クラッシュレポート、RTT / 通信量の統計はありません。
+- **3 プラットフォームは機能同等ではありません。** デスクトップが基準で、Android は TUN／クロスネットワークプロキシ、グループチャット、フォルダ送信、複数デバイス同期を意図的に省略しています。macOS は未検証です。
+- **Linux の deb はサービスモード**であり、GTK ウィンドウ版ではありません。ウィンドウ版は Linux ホストで CGO が必要です（`build/linux/nfpm/nfpm.yaml` を同梱）。
+- **モバイルは実機回帰が未実施**：ビルド環境に Android 実機もエミュレーターもありません。APK はコンパイル・署名・展開・コアの実行可能性まで確認済みですが、実行時のレイアウト（特に狭い画面での 4 タイル）は実機での確認が必要です。
+- **APK は debug 署名**です。インストールは可能ですが、ストア配布には release keystore が必要です。
+- IPv6 プロキシは実験的で、プロキシチェーンには対応しません。
+- SOCKS5 の強化は既定で無効です。資格情報を設定するまでループバック・認証なしで、同一マシンの任意のプロセスが利用できます。
+- リレーのグループは共有鍵モデルです（ホットリロードと期限切れに対応、オンラインローテーションは未対応）。
+- 帯域制限はプロセス全体に適用され、相手や方向ごとの設定はできません。事前ハッシュはソースを余分に 1 回読みます。
+- グループチャットはテキストのみで履歴はローカル保存です。参加前の履歴配信やメンバー管理はありません。
+- オフラインメッセージの自動再送は最大 20 回（バックオフ上限 10 分）。以降は失敗となり手動再送が必要です。
+- メッセージの取り消しは自分が送信したもの 2 分以内に限られます。アバターは約 12KB までで、サーバー側の切り抜きは行いません。
+- モバイルからの送信では一時コピーが発生します（転送エンジンはシーク可能なローカルパスを必要とし、SAF の URI はパスではないため）。
 
 ---
 
 ## ⚠️ 免責事項
 
-本ソフトウェアは学習および研究用途のみを目的としています。現地の法令を遵守してください。本ソフトウェアの使用によって生じたいかなる結果も、利用者の責任となります。
+本ソフトウェアは学習・研究目的です。お住まいの地域の法令を遵守してください。使用によって生じたいかなる結果も利用者の責任となります。
 
 ---
 
@@ -580,6 +561,4 @@ npx vue-tsc --noEmit
 
 Copyright (c) 2026 FST-Go contributors
 
-本プログラムは [MIT License](LICENSE) で公開されています。著作権表示とライセンス表示を保持すれば、自由な使用、改変、配布、商用利用が可能です。本プログラムは学習・参考用であり、違法な目的には使用しないでください。お役に立てれば幸いですが、いかなる保証も行いません。
-
-依存ライブラリはそれぞれの元のライセンスに従います。
+[MIT License](LICENSE) で公開されています。著作権表示とライセンス表示を保持すれば、使用・変更・配布・商用利用は自由です。依存ライブラリはそれぞれのライセンスに従います。
