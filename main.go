@@ -1,32 +1,36 @@
+// FST 桌面客户端与 fst serve 服务模式的统一入口。
+//
+// 两种形态共用 internal/bootstrap.Assemble 装配同一个核心运行时（节点、聊天、
+// 传输、群聊、代理、/api/fst handler），差别只在外壳：
+//
+//	fst          Wails 窗口 + 系统托盘 + 原生事件推送
+//	fst serve    HTTP + SSE，浏览器打开与桌面版一致的界面
+//
+// 用 `fst serve -h` 查看服务模式参数。
 package main
 
 import (
-	"context"
 	"embed"
 	"errors"
+	"flag"
 	"fmt"
-	"io"
+	iofs "io/fs"
 	"log"
 	"log/slog"
 	"net/http"
-	"net/netip"
 	"os"
-	"path/filepath"
+	"os/signal"
 	"strings"
-	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"fst/internal/api"
-	"fst/internal/chat"
-	"fst/internal/feature"
-	"fst/internal/node"
-	fstproxy "fst/internal/proxy"
-	"fst/internal/room"
+	"fst/internal/bootstrap"
+	"fst/internal/proto"
+	"fst/internal/serve"
 	"fst/internal/store"
-	"fst/internal/transfer"
 
-	ma "github.com/multiformats/go-multiaddr"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
@@ -38,16 +42,142 @@ var assets embed.FS
 //go:embed build/appicon.png
 var trayIcon []byte
 
-const defaultPort = 8787
+// BuildTag 标识当前二进制的构建批次，只用于现场排障。
+//
+// 为什么需要它：桌面端安装在不同机器上时，用户无法从界面判断某台机器跑的
+// 是新版还是旧版（`fst version` 用的是协议版本，多次修复之间并不变化）。
+// 启动日志里的 build= 一行可以让排障一眼确认「这台机器到底在跑哪份代码」。
+const BuildTag = "2026-11-09-v1.2.0"
 
 func main() {
-	db, dataDir, port, idx, single := openInstance()
-	initLog(dataDir)
-	defer func() { db.Close() }() // db may be swapped by openInstance only before this point
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "serve":
+			os.Exit(runServe(os.Args[2:]))
+		case "version", "-version", "--version", "-v":
+			fmt.Println("FST " + proto.Version)
+			return
+		case "help", "-h", "--help":
+			printUsage()
+			return
+		}
+	}
+	runDesktop()
+}
+
+// printUsage 打印子命令帮助。
+//
+// 参数:
+//
+//	无
+//
+// 返回:
+//
+//	无（直接写 stdout）
+func printUsage() {
+	fmt.Print(`FST — 局域网 P2P 文件传输与聊天
+
+用法:
+  fst                  启动桌面客户端（Wails 窗口 + 托盘）
+  fst serve [-addr A]  启动无界面服务模式，浏览器访问 http://<addr>
+  fst version          打印版本
+
+环境变量:
+  FST_DATA_DIR   覆盖数据目录（身份密钥、数据库、日志）
+  FST_PORT       覆盖 libp2p 监听端口（默认 8787）
+  FST_WAN=1      解锁跨网络（中继/DHT/代理）高级功能
+
+桌面版配置文件: <数据目录>/config.yaml
+`)
+}
+
+// runServe 运行 fst serve：装配核心运行时，把 Go 事件转成 SSE，并在 addr 上监听。
+//
+// 参数:
+//   - args: []string — serve 子命令后面的参数，支持 -addr
+//
+// 返回:
+//   - int — 进程退出码：0 正常退出；1 启动失败；2 参数错误
+func runServe(args []string) int {
+	flagset := flag.NewFlagSet("serve", flag.ContinueOnError)
+	addr := flagset.String("addr", serve.DefaultAddr, "监听地址，例如 127.0.0.1:9797 或 0.0.0.0:9797")
+	if err := flagset.Parse(args); err != nil {
+		return 2
+	}
+
+	db, dataDir, port, _, _ := bootstrap.OpenInstance()
+	defer db.Close()
+	bootstrap.InitLog(dataDir)
+	slog.Info("fst started", "version", proto.Version, "build", BuildTag)
+
+	// srv 在 Assemble 之后才创建；装配期间的少量事件会丢失（与桌面版启动早期一致）。
+	var srv *serve.Server
+	res, err := bootstrap.Assemble(bootstrap.Options{
+		DB:      db,
+		DataDir: dataDir,
+		Port:    port,
+		Emit: func(name string, data any) {
+			if srv != nil {
+				srv.Broadcast(name, data)
+			}
+		},
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "启动节点失败: %v\n", err)
+		return 1
+	}
+	defer res.Shutdown()
+
+	dist, err := iofs.Sub(assets, "front/dist")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "前端资源未打包（请先构建 front/dist）: %v\n", err)
+		return 1
+	}
+	srv, err = serve.New(serve.Options{
+		API:      res.API,
+		Dist:     dist,
+		DB:       db,
+		DataDir:  dataDir,
+		Node:     res.Node,
+		Transfer: res.Transfer,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "初始化 Web 服务失败: %v\n", err)
+		return 1
+	}
+	shutdown, err := srv.Serve(*addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 1
+	}
+	fmt.Printf("FST 服务模式已启动\n  地址: http://%s\n  令牌: %s\n  节点: %s\n", *addr, srv.Token(), res.Node.Host.ID())
+
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	<-ch
+	shutdown()
+	return 0
+}
+
+// runDesktop 运行桌面客户端：Wails 窗口、托盘、原生通知与事件推送。
+//
+// 参数:
+//
+//	无
+//
+// 返回:
+//
+//	无；致命错误直接退出进程
+func runDesktop() {
+	db, dataDir, port, idx, single := bootstrap.OpenInstance()
+	defer db.Close()
+	bootstrap.InitLog(dataDir)
+	slog.Info("fst started", "version", proto.Version, "build", BuildTag)
 
 	var quitting atomic.Bool
 	var appPtr atomic.Pointer[application.App]
 	var winPtr atomic.Pointer[application.WebviewWindow]
+	var quitFn atomic.Value // func()
 	notifier := notifications.New()
 
 	emit := func(name string, data any) {
@@ -64,142 +194,78 @@ func main() {
 		}
 	}
 
-	// cross-network settings live in config.yaml; the first run migrates the old database values into it
-	cfgPaths := configPaths()
-	ncfg, cfgPath, err := loadNetConfig(cfgPaths)
-	if err != nil {
-		slog.Warn("config.yaml is invalid, cross-network settings ignored", "path", cfgPath, "err", err)
-	} else if cfgPath == "" {
-		if lc, ok := legacyNetConfig(db.Setting); ok {
-			ncfg = lc
-			if cfgPath, err = saveNetConfig("", ncfg, cfgPaths); err != nil {
-				slog.Warn("could not write config.yaml", "err", err)
+	// 桌面专属钩子：装配时 App 还不存在，用原子指针延迟取；调用发生在窗口启动之后。
+	app := func() *application.App { return appPtr.Load() }
+	hooks := api.Hooks{
+		PickFiles: func() ([]string, error) {
+			a := app()
+			if a == nil {
+				return nil, errors.New("界面尚未就绪")
 			}
-		}
+			return a.Dialog.OpenFile().SetTitle("选择要发送的文件").CanChooseFiles(true).PromptForMultipleSelection()
+		},
+		PickDir: func() (string, error) {
+			a := app()
+			if a == nil {
+				return "", errors.New("界面尚未就绪")
+			}
+			return a.Dialog.OpenFile().SetTitle("选择下载目录").CanChooseFiles(false).CanChooseDirectories(true).CanCreateDirectories(true).PromptForSingleSelection()
+		},
+		PickFolder: func() (string, error) {
+			a := app()
+			if a == nil {
+				return "", errors.New("界面尚未就绪")
+			}
+			return a.Dialog.OpenFile().SetTitle("选择要发送的文件夹").CanChooseFiles(false).CanChooseDirectories(true).PromptForSingleSelection()
+		},
+		Reveal: func(path string) {
+			if a := app(); a != nil {
+				_ = a.Env.OpenFileManager(path, true)
+			}
+		},
+		Quit: func() {
+			if f, ok := quitFn.Load().(func()); ok && f != nil {
+				f()
+			}
+		},
+		HideWindow: func() {
+			if w := winPtr.Load(); w != nil {
+				w.Hide()
+			}
+		},
+		Autostart: func() bool {
+			a := app()
+			if a == nil {
+				return false
+			}
+			st, err := a.Autostart.Status()
+			return err == nil && st.Enabled
+		},
+		SetAutostart: func(on bool) error {
+			a := app()
+			if a == nil {
+				return errors.New("界面尚未就绪")
+			}
+			if on {
+				return a.Autostart.Enable()
+			}
+			return a.Autostart.Disable()
+		},
 	}
-	// a typo in a hand-edited file must not stop the app from starting: drop bad relay addresses with a warning
-	var goodRelays []string
-	for _, r := range ncfg.Relays {
-		if _, err := node.ParseRelays([]string{r}); err != nil {
-			slog.Warn("ignoring invalid relay in config.yaml", "relay", r, "err", err)
-			continue
-		}
-		goodRelays = append(goodRelays, r)
-	}
-	var cfgMu sync.Mutex
 
-	// 高级网络功能门禁：默认关闭，解锁入口见 docs/开发文档.md。
-	unlocked := feature.WANUnlocked(db)
-	if unlocked {
-		slog.Info("相关功能已经完全解锁")
-	}
-	wanRelays, wanGroup := goodRelays, ncfg.Group
-	if !unlocked {
-		// 锁定态不把中继与分组密钥交给节点，避免进入 HELLO。
-		wanRelays, wanGroup = nil, ""
-	}
-	n, err := node.New(node.Config{DataDir: dataDir, Port: port, Store: db, Emit: emit, WAN: unlocked, Relays: wanRelays, Group: wanGroup})
+	res, err := bootstrap.Assemble(bootstrap.Options{
+		DB:      db,
+		DataDir: dataDir,
+		Port:    port,
+		Emit:    emit,
+		GUI:     hooks,
+	})
 	if err != nil {
 		log.Fatalf("start node: %v", err)
 	}
-	defer n.Close()
-	chatSvc := chat.New(n)
-	transferSvc := transfer.New(n)
-	roomSvc, err := room.New(n)
-	if err != nil {
-		slog.Warn("group chat disabled", "err", err)
-	} else {
-		defer roomSvc.Close()
-	}
-	var proxyTUN *fstproxy.TUN
-	var socks *fstproxy.SOCKS5
-	publishProxy := func(s *fstproxy.Status) {
-		fstproxy.SetStatus(s)
-		emit("proxy:status", s)
-	}
-	if unlocked {
-		publishProxy(&fstproxy.Status{Enabled: ncfg.Proxy.Enable, Mode: ncfg.Proxy.Mode})
-	} else {
-		// 锁定态不把代理模式等配置回填给界面/事件。
-		publishProxy(&fstproxy.Status{})
-	}
-	if unlocked && ncfg.Proxy.Enable {
-		exit := ncfg.Proxy.Exit
-		if exit == "" && len(goodRelays) > 0 {
-			exit = goodRelays[0]
-		}
-		client, err := fstproxy.NewClient(n.Host, exit)
-		if err != nil {
-			publishProxy(&fstproxy.Status{Enabled: true, Error: err.Error()})
-		} else {
-			client.SetToken(ncfg.Proxy.Token)
-			// Local SOCKS5 inbound works without admin rights or wintun.dll;
-			// browsers/system proxy can use it even if the TUN fails below.
-			// Fixed port so the user can keep it in browser settings; fall
-			// back to an auto port when occupied.
-			if ncfg.Proxy.SocksEnabled() {
-				socksOpt, socksListen := socksOptions(ncfg.Proxy)
-				if socksListen == "" {
-					socksListen = "127.0.0.1:20300"
-				}
-				socks, err = fstproxy.StartSOCKS5(client, socksListen, socksOpt)
-				if err != nil {
-					slog.Warn("SOCKS5 inbound failed; falling back to loopback without auth", "err", err)
-					socks, err = fstproxy.StartSOCKS5(client, "", fstproxy.SocksOptions{})
-				}
-				if err != nil {
-					slog.Warn("local SOCKS5 inbound failed", "err", err)
-				}
-			} else {
-				slog.Info("SOCKS5 inbound disabled by config")
-			}
-			mode := ncfg.Proxy.Mode
-			if mode == "" {
-				mode = "split"
-			}
-			st := &fstproxy.Status{Enabled: true, Mode: mode, ExitPeer: client.ExitPeer().String()}
-			if socks != nil {
-				st.SocksAddr = socks.Addr()
-			}
-			proxyTUN, err = fstproxy.StartTUN(client, fstproxy.TUNConfig{
-				Mode: mode, Routes: ncfg.Proxy.Routes, Domains: ncfg.Proxy.Domains, ExitIPv4: client.ExitIPv4(),
-				IPv6: ncfg.Proxy.IPv6, ExitIPv6: exitIPv6FromMultiaddr(exit),
-			})
-			if err != nil {
-				st.Error = err.Error()
-				publishProxy(st)
-				slog.Error("network proxy could not start; FST will continue without it", "err", err)
-			} else {
-				defer proxyTUN.Close()
-				st.Running = true
-				publishProxy(st)
-				slog.Info("network proxy started", "mode", mode, "exit", client.ExitPeer(), "socks", st.SocksAddr)
-				// Cached answers include fake-IPs from the previous run that
-				// the fresh nameTable no longer knows; drop them up front.
-				go fstproxy.FlushSystemDNSCache()
-				// Connectivity self-check through the exit; result only affects UI state.
-				go func() {
-					pctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-					defer cancel()
-					pc, perr := client.DialContext(pctx, "tcp4", "1.1.1.1:80")
-					if perr == nil {
-						_ = pc.Close()
-						st.Probe = "ok"
-					} else {
-						st.Probe = perr.Error()
-					}
-					publishProxy(st)
-				}()
-			}
-			if socks != nil {
-				defer socks.Close()
-			}
-		}
-	}
-	slog.Info("node started", "instance", idx, "peer", n.Host.ID(), "addrs", n.Host.Addrs())
+	defer res.Shutdown()
+	slog.Info("node started", "instance", idx, "peer", res.Node.Host.ID(), "addrs", res.Node.Host.Addrs())
 
-	var apiHandler http.Handler // assigned below, before the app starts serving
-	var quit func()
 	opts := application.Options{
 		Name:        "FST",
 		Description: "LAN P2P file transfer and chat",
@@ -210,7 +276,7 @@ func main() {
 			Middleware: func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if strings.HasPrefix(r.URL.Path, "/api/") {
-						apiHandler.ServeHTTP(w, r)
+						res.API.ServeHTTP(w, r)
 						return
 					}
 					// exe upgrades change hashed chunk names; never let the webview reuse a stale index.html
@@ -228,30 +294,37 @@ func main() {
 			UniqueID:      "com.fst.app",
 			EncryptionKey: [32]byte{'f', 's', 't', '-', 'l', 'a', 'n', '-', 'p', '2', 'p', '-', 'i', 'n', 's', 't', 'a', 'n', 'c', 'e', '-', 'k', 'e', 'y', '-', '0', '1', '2', '3', '4', '5', '6'},
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				// 这条日志由**正在运行的旧进程**写出：用户双击新 exe 时，
+				// 新进程会把请求交给它然后自行退出。现场很容易误判成
+				// 「新版没生效」——日志里出现这行就说明旧进程还占着位置，
+				// 必须先从托盘退出（或结束进程）再启动新版本。
+				slog.Warn("second launch handed off to the running instance; quit it before running a new build",
+					"build", BuildTag)
 				if w := winPtr.Load(); w != nil {
 					showWindow(w)
 				}
 			},
 		}
 	}
-	app := application.New(opts)
-	appPtr.Store(app)
+	mainApp := application.New(opts)
+	appPtr.Store(mainApp)
 
-	quit = func() {
+	quit := func() {
 		if quitting.Swap(true) {
 			return
 		}
 		// ponytail: watchdog so a stuck shutdown can never leave a zombie process that blocks the next launch;
 		// remove it once every shutdown path is known to be non-blocking.
 		time.AfterFunc(5*time.Second, func() { os.Exit(0) })
-		app.Quit()
+		mainApp.Quit()
 	}
+	quitFn.Store(quit)
 
 	title := "FST"
 	if idx > 1 {
 		title = fmt.Sprintf("FST (%d)", idx)
 	}
-	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	win := mainApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            title,
 		Width:            1280,
 		Height:           800,
@@ -274,7 +347,7 @@ func main() {
 		case "tray":
 			win.Hide()
 		default:
-			app.Event.Emit("app:close-request", nil)
+			mainApp.Event.Emit("app:close-request", nil)
 		}
 	})
 	// files dropped on a device card (<div id="peer-<PeerID>" data-file-drop-target>) are sent straight away
@@ -284,176 +357,24 @@ func main() {
 		if d == nil || !strings.HasPrefix(d.ElementID, "peer-") || len(files) == 0 {
 			return
 		}
-		if _, err := transferSvc.Send(strings.TrimPrefix(d.ElementID, "peer-"), files); err != nil {
-			app.Event.Emit("app:error", err.Error())
+		if _, err := res.Transfer.Send(strings.TrimPrefix(d.ElementID, "peer-"), files); err != nil {
+			mainApp.Event.Emit("app:error", err.Error())
 		}
 	})
 
-	tray := app.SystemTray.New()
+	tray := mainApp.SystemTray.New()
 	tray.SetIcon(trayIcon)
 	tray.SetTooltip("FST")
-	menu := app.NewMenu()
+	menu := mainApp.NewMenu()
 	menu.Add("显示 FST").OnClick(func(*application.Context) { showWindow(win) })
 	menu.AddSeparator()
 	menu.Add("退出").OnClick(func(*application.Context) { quit() })
 	tray.SetMenu(menu)
 	tray.OnClick(func() { showWindow(win) })
 
-	apiHandler = api.New(n, chatSvc, transferSvc, roomSvc, api.Hooks{
-		PickFiles: func() ([]string, error) {
-			return app.Dialog.OpenFile().SetTitle("选择要发送的文件").CanChooseFiles(true).PromptForMultipleSelection()
-		},
-		PickDir: func() (string, error) {
-			return app.Dialog.OpenFile().SetTitle("选择下载目录").CanChooseFiles(false).CanChooseDirectories(true).CanCreateDirectories(true).PromptForSingleSelection()
-		},
-		PickFolder: func() (string, error) {
-			return app.Dialog.OpenFile().SetTitle("选择要发送的文件夹").CanChooseFiles(false).CanChooseDirectories(true).PromptForSingleSelection()
-		},
-		Reveal:     func(path string) { _ = app.Env.OpenFileManager(path, true) },
-		Quit:       quit,
-		HideWindow: func() { win.Hide() },
-		Autostart: func() bool {
-			st, err := app.Autostart.Status()
-			return err == nil && st.Enabled
-		},
-		NetConfig: func() (bool, []string, string, string) {
-			if !unlocked {
-				return false, nil, "", ""
-			}
-			cfgMu.Lock()
-			defer cfgMu.Unlock()
-			return ncfg.EnableRelay, ncfg.Relays, ncfg.Group, cfgPath
-		},
-		ProxyConfig: func() (bool, string, string, []string, []string) {
-			if !unlocked {
-				return false, "", "", nil, nil
-			}
-			cfgMu.Lock()
-			defer cfgMu.Unlock()
-			return ncfg.Proxy.Enable, ncfg.Proxy.Mode, ncfg.Proxy.Exit, ncfg.Proxy.Routes, ncfg.Proxy.Domains
-		},
-		SaveNetConfig: func(enable bool, relays []string, group string, proxyEnable bool, proxyMode, proxyExit string, proxyRoutes, proxyDomains []string) error {
-			if !unlocked {
-				return errors.New("当前版本不支持跨网络配置")
-			}
-			cfgMu.Lock()
-			defer cfgMu.Unlock()
-			// 从当前配置复制，保留同一张 proxy 卡片里的令牌/IPv6/SOCKS5 加固项。
-			next := ncfg
-			next.EnableRelay = enable
-			next.Relays = relays
-			next.Group = group
-			next.Proxy.Enable = proxyEnable
-			next.Proxy.Mode = proxyMode
-			next.Proxy.Exit = proxyExit
-			next.Proxy.Routes = proxyRoutes
-			next.Proxy.Domains = proxyDomains
-			p, err := saveNetConfig(cfgPath, next, cfgPaths)
-			if err != nil {
-				return err
-			}
-			ncfg, cfgPath = next, p
-			ncfg.Relays = cleanRelays(ncfg.Relays)
-			return nil
-		},
-		ProxySecurity: func() api.ProxySecurity {
-			if !unlocked {
-				return api.ProxySecurity{}
-			}
-			cfgMu.Lock()
-			defer cfgMu.Unlock()
-			p := ncfg.Proxy
-			if p.SocksAllow == nil {
-				p.SocksAllow = []string{}
-			}
-			return api.ProxySecurity{
-				Token: p.Token, IPv6: p.IPv6, SocksEnable: p.SocksEnabled(),
-				SocksUser: p.SocksUser, SocksPass: p.SocksPass, SocksAllow: p.SocksAllow,
-				SocksListen: p.SocksListen, SocksMaxConn: p.SocksMaxConn, SocksMaxPerIP: p.SocksMaxPerIP,
-			}
-		},
-		SaveProxySecurity: func(in api.ProxySecurity) error {
-			if !unlocked {
-				return errors.New("当前版本不支持跨网络配置")
-			}
-			cfgMu.Lock()
-			defer cfgMu.Unlock()
-			next := ncfg
-			next.Proxy.Token = strings.TrimSpace(in.Token)
-			next.Proxy.IPv6 = in.IPv6
-			enabled := in.SocksEnable
-			next.Proxy.SocksEnable = &enabled
-			next.Proxy.SocksUser = strings.TrimSpace(in.SocksUser)
-			next.Proxy.SocksPass = in.SocksPass
-			next.Proxy.SocksAllow = in.SocksAllow
-			next.Proxy.SocksListen = strings.TrimSpace(in.SocksListen)
-			next.Proxy.SocksMaxConn = in.SocksMaxConn
-			next.Proxy.SocksMaxPerIP = in.SocksMaxPerIP
-			p, err := saveNetConfig(cfgPath, next, cfgPaths)
-			if err != nil {
-				return err
-			}
-			ncfg, cfgPath = next, p
-			return nil
-		},
-		SetAutostart: func(on bool) error {
-			if on {
-				return app.Autostart.Enable()
-			}
-			return app.Autostart.Disable()
-		},
-	})
-
-	if err := app.Run(); err != nil {
+	if err := mainApp.Run(); err != nil {
 		log.Fatal(err)
 	}
-}
-
-// socksOptions 把 config.yaml 的 SOCKS5 加固项转成代理包选项与监听地址。
-//
-// 参数:
-//   - p: proxyConfig — config.yaml 的 proxy 段
-//
-// 返回:
-//   - fstproxy.SocksOptions — 用户名/密码、来源 CIDR、并发上限；CIDR 解析失败时记录 Warn 并忽略该项
-//   - string — 监听地址；空表示用默认 127.0.0.1:20300。配置了来源白名单但没写地址时绑 0.0.0.0
-func socksOptions(p proxyConfig) (fstproxy.SocksOptions, string) {
-	opt := fstproxy.SocksOptions{
-		User: p.SocksUser, Pass: p.SocksPass,
-		MaxTotal: p.SocksMaxConn, MaxPerIP: p.SocksMaxPerIP,
-	}
-	for _, text := range p.SocksAllow {
-		prefix, err := netip.ParsePrefix(strings.TrimSpace(text))
-		if err != nil {
-			slog.Warn("invalid SOCKS5 allow CIDR ignored", "cidr", text, "err", err)
-			continue
-		}
-		opt.Allow = append(opt.Allow, prefix)
-	}
-	listen := strings.TrimSpace(p.SocksListen)
-	if listen == "" && len(opt.Allow) > 0 {
-		listen = "0.0.0.0:20300"
-	}
-	return opt, listen
-}
-
-// exitIPv6FromMultiaddr 取出中继 multiaddr 里的 /ip6/ 地址（供 TUN 绕行使用）。
-//
-// 参数:
-//   - s: string — 代理出口 multiaddr（可能为空或只含 IPv4/DNS）
-//
-// 返回:
-//   - string — IPv6 字面量；没有 /ip6/ 组件时为空
-func exitIPv6FromMultiaddr(s string) string {
-	maAddr, err := ma.NewMultiaddr(s)
-	if err != nil {
-		return ""
-	}
-	v, err := maAddr.ValueForProtocol(ma.P_IP6)
-	if err != nil {
-		return ""
-	}
-	return v
 }
 
 func showWindow(w *application.WebviewWindow) {
@@ -487,14 +408,4 @@ func lenOf(v any) int {
 		return len(f)
 	}
 	return 0
-}
-
-// initLog writes logs to <data>/fst.log (the GUI build has no console); stderr too when attached.
-func initLog(dir string) {
-	f, err := os.OpenFile(filepath.Join(dir, "fst.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return
-	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.MultiWriter(f, os.Stderr), nil)))
-	log.SetOutput(io.MultiWriter(f, os.Stderr))
 }
