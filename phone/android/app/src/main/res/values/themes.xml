@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 用无 ActionBar 的系统主题做壳，实际界面全部由 Compose 绘制。 -->
+    <style name="Theme.FST" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#FF1B5E4B</item>
+        <item name="android:navigationBarColor">#FFFFFFFF</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

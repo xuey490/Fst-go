@@ -1,0 +1,39 @@
+# 无 GUI 依赖的 deb 打包配置（服务模式）。
+#
+# 与同目录的 nfpm.yaml 的区别：那份打的是 GTK4 + WebKitGTK 6.0 的桌面窗口版，
+# 必须在 Linux 主机（或带 GTK 开发包的容器）里用 CGO 编译；这份打的是
+# `-tags server,production` 的纯 Go 静态二进制，可以直接在任意平台交叉编译，
+# 装好后用 `fst serve` 起服务、浏览器访问同一套界面。
+#
+# 用法：bash scripts/build-deb.sh
+name: "fst"
+arch: amd64
+platform: "linux"
+version: "1.2.0"
+section: "net"
+priority: "optional"
+maintainer: "xuey490 <xuey863toy@gmail.com>"
+description: |
+  FST：局域网 / 跨网 P2P 文件传输与即时通讯（服务模式）。
+  安装后执行 `fst serve` 启动，按提示在浏览器打开界面；
+  桌面窗口版请从 Release 或用 build/linux/nfpm/nfpm.yaml 自行打包。
+vendor: "FST-Go"
+homepage: "https://github.com/xuey490/Fst-go"
+license: "MIT"
+release: "1"
+
+contents:
+  - src: "./bin/fst-linux-amd64"
+    dst: "/usr/local/bin/fst"
+    file_info:
+      mode: 0755
+  - src: "./build/appicon.png"
+    dst: "/usr/share/icons/hicolor/128x128/apps/fst.png"
+  - src: "./build/linux/fst-serve.desktop"
+    dst: "/usr/share/applications/fst.desktop"
+
+# 纯静态二进制，不依赖 GTK / WebKit，只要求一个 glibc 或 musl 系统。
+depends: []
+
+scripts:
+  postinstall: "./build/linux/nfpm/scripts/postinstall.sh"

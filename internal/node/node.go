@@ -13,11 +13,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"fst/internal/lanmdns"
 	"fst/internal/proto"
 	"fst/internal/store"
 
@@ -29,7 +31,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	"github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
@@ -43,6 +44,14 @@ type Config struct {
 	Store       *store.Store
 	Emit        func(name string, data any)
 	DisableMDNS bool // tests
+	// AnnounceIP 让节点对外广播指定的 IPv4（仅 LAN 模式生效）。
+	// 移动端无法枚举网卡：Android 11+ 禁止应用 UID 使用 NETLINK_ROUTE，
+	// net.Interfaces() 必然失败，libp2p 展开监听地址后只剩 127.0.0.1。
+	// 对端拿到这种地址拨号会连到它自己（peer id mismatch）或直接失败，
+	// 表现为「能连上但对方发不过来消息」「手机之间互相发现却连不上」。
+	// 设置本字段后，回环/未指定地址会被改写为该 IPv4，端口与传输协议保持不变。
+	// 留空表示按系统枚举结果广播（桌面端默认行为）。
+	AnnounceIP string
 	// WAN (enabled by the advanced networking gate): advertise non-LAN addresses and enable AutoNATv2,
 	// circuit-relay client/service and DCUtR hole punching. Needs a reachable relay (Relays) when both
 	// sides are behind NAT.
@@ -103,23 +112,27 @@ type Node struct {
 	dht       *dht.IpfsDHT              // nil unless WAN: PeerID -> addresses lookup
 	reach     string                    // AutoNATv2 verdict: unknown | public | private
 	closed    atomic.Bool               // set first in Close: shutdown-time disconnects must not emit
-	mdns      mdns.Service
-	dialSlots chan struct{} // cap 8: directory / mDNS dials share this so a join cannot open 200 circuits at once
-	mu        sync.Mutex
-	online    map[peer.ID]bool
-	groups    map[peer.ID]string             // relay: group name each online terminal presented in HELLO
-	groupErr  map[peer.ID]string             // relay: why the last HELLO key was rejected
-	groupSpec map[string]GroupSpec           // relay: key -> spec（含过期时间）
-	byName    map[string]GroupSpec           // relay: name -> spec（查过期用）
-	groupMax  int                            // relay: 每组在线终端软上限；0 = 不限
+	mdns      *lanmdns.Service          // 局域网发现：标准 _fst._tcp 与历史 fst 双注册
+	// announceMu 保护 announceIP。AddrsFactory 每次取地址都会读它，因此可以在
+	// 运行期热更新（手机切换 Wi-Fi、飞行模式恢复后 IP 会变）。
+	announceMu sync.RWMutex
+	announceIP string
+	dialSlots  chan struct{} // cap 8: directory / mDNS dials share this so a join cannot open 200 circuits at once
+	mu         sync.Mutex
+	online     map[peer.ID]bool
+	groups     map[peer.ID]string   // relay: group name each online terminal presented in HELLO
+	groupErr   map[peer.ID]string   // relay: why the last HELLO key was rejected
+	groupSpec  map[string]GroupSpec // relay: key -> spec（含过期时间）
+	byName     map[string]GroupSpec // relay: name -> spec（查过期用）
+	groupMax   int                  // relay: 每组在线终端软上限；0 = 不限
 	// 终端：中继最近一次回包里的分组状态（设置页展示「已过期/密钥无效」）。
 	relayGroupName  string
 	relayGroupExp   int64
 	relayGroupError string
-	busy      map[string]bool                // connect/hello in flight, keyed by "hello:<id>" / "dial:<id>"
-	handlers  map[string]Handler
-	ctx       context.Context
-	cancel    context.CancelFunc
+	busy            map[string]bool // connect/hello in flight, keyed by "hello:<id>" / "dial:<id>"
+	handlers        map[string]Handler
+	ctx             context.Context
+	cancel          context.CancelFunc
 	// onPeerOnline 在终端从离线变为在线时调用（chat 用来冲刷离线队列）；必须非阻塞。
 	onPeerOnline func(peer.ID)
 	// onGroupChange 在终端分组密钥/中继分组状态变化时调用，参数为当前应订阅的分组密钥（空=退订）。
@@ -175,6 +188,7 @@ func New(cfg Config) (*Node, error) {
 	n.ctx, n.cancel = context.WithCancel(context.Background())
 	n.reach = "unknown"
 	n.directory = cfg.Directory
+	n.announceIP = strings.TrimSpace(cfg.AnnounceIP)
 	n.groupMax = cfg.GroupMaxTerminals
 	n.groupFile = cfg.GroupFile
 	n.groupReload = cfg.GroupReload
@@ -236,7 +250,9 @@ func New(cfg Config) (*Node, error) {
 				}
 			}
 		} else {
-			opts = append(opts, libp2p.AddrsFactory(lanOnly), libp2p.DisableRelay())
+			// LAN 模式下地址由 addrsFactory 过滤/改写：只暴露私网地址，并在
+			// 设置了 AnnounceIP 时把回环地址换成本机真实局域网 IPv4。
+			opts = append(opts, libp2p.AddrsFactory(n.addrsFactory()), libp2p.DisableRelay())
 		}
 		h, err := libp2p.New(opts...)
 		if err != nil {
@@ -290,9 +306,23 @@ func New(cfg Config) (*Node, error) {
 	n.Handle(proto.THello, n.onHello)
 
 	if !cfg.DisableMDNS {
-		n.mdns = mdns.NewMdnsService(h, proto.MDNSService, n)
-		if err := n.mdns.Start(); err != nil {
-			slog.Warn("mdns start failed (use manual connect)", "err", err)
+		// 双注册：标准 _fst._tcp（移动端可浏览）+ 历史裸标签 fst（旧装机兼容）。
+		n.mdns = lanmdns.New(lanmdns.Config{
+			Host:     h,
+			Notifee:  n,
+			Port:     actualPort(h, cfg.Port),
+			Standard: proto.MDNSServiceStandard,
+			Legacy:   proto.MDNSService,
+			// 只让真实的局域网网卡参与组播。多网卡机器（WSL/Hyper-V/APIPA
+			// 备用网卡）上，zeroconf 会逐网卡 SetMulticastInterface，失败时
+			// 报文可能从虚拟网卡发出，局域网里的手机永远收不到——现场日志
+			// 就是被 "[WARN] mdns: Failed to set multicast interface" 刷屏。
+			Interfaces: lanmdns.LANInterfaces(),
+		})
+		if n.mdns != nil {
+			if err := n.mdns.Start(); err != nil {
+				slog.Warn("mdns start failed (use manual connect)", "err", err)
+			}
 		}
 	}
 	if n.directory && n.groupFile != "" {
@@ -427,6 +457,51 @@ func (n *Node) Name() string {
 		def = "FST"
 	}
 	return n.Store.Setting("nickname", def)
+}
+
+// ListenPort 返回本机实际使用的 TCP 监听端口。
+//
+// 用途：移动端向系统 DNS-SD（NsdManager）注册服务时要填 SRV 端口，而该端口
+// 在 8787 被占用时会回落到随机值，因此不能直接用配置里的 Port。
+//
+// 返回:
+//   - int — 实际监听端口；一个 TCP 监听地址都没有时返回 0
+func (n *Node) ListenPort() int { return actualPort(n.Host, 0) }
+
+// SetAnnounceIP 热更新对外广播的本机 IPv4（移动端 Wi-Fi 地址变化时调用）。
+//
+// 为什么需要：Android 上 libp2p 枚举不到网卡，自身地址只有 127.0.0.1。
+// 如果不改写，对端从 identify / HELLO 学到的都是回环地址，之后按该地址
+// 拨号只会连到它自己，症状是「消息发不过去」「手机之间互相看不到」。
+//
+// 参数:
+//   - ip: string — 形如 "192.168.1.13" 的 IPv4；传空字符串表示恢复系统枚举结果
+//
+// 返回:
+//   - error — 传入字符串不是合法 IPv4 时返回
+//
+// 副作用：无锁阻塞；下一次读取地址（/self、HELLO、identify）即生效。
+func (n *Node) SetAnnounceIP(ip string) error {
+	ip = strings.TrimSpace(ip)
+	if ip != "" {
+		if v := net.ParseIP(ip); v == nil || v.To4() == nil {
+			return fmt.Errorf("不是合法的 IPv4 地址: %q", ip)
+		}
+	}
+	n.announceMu.Lock()
+	n.announceIP = ip
+	n.announceMu.Unlock()
+	return nil
+}
+
+// AnnounceIP 返回当前对外广播的本机 IPv4，空表示按系统枚举结果广播。
+//
+// 返回:
+//   - string — IPv4 点分字符串或空字符串
+func (n *Node) AnnounceIP() string {
+	n.announceMu.RLock()
+	defer n.announceMu.RUnlock()
+	return n.announceIP
 }
 
 // SetName changes the nickname and announces it to every connected peer.
@@ -596,7 +671,7 @@ func (n *Node) EnsureConnected(ctx context.Context, pid peer.ID) error {
 	if n.Host.Network().Connectedness(pid) == network.Connected {
 		return nil
 	}
-	if addrs := n.Host.Peerstore().Addrs(pid); len(addrs) > 0 {
+	if addrs := dialableAddrs(n.Host.Peerstore().Addrs(pid)); len(addrs) > 0 {
 		if err := n.Host.Connect(ctx, peer.AddrInfo{ID: pid, Addrs: addrs}); err == nil {
 			return nil
 		}
@@ -610,6 +685,44 @@ func (n *Node) onConnected(pid peer.ID) {
 	}
 	n.dropCircuitIfDirect(pid)
 	n.hello(pid)
+	// 已连接的对端说明它就在本网段可达：把它代播到 mDNS 上，让「服务名对不上」
+	// 或「自己不会应答组播查询」的设备（典型是手机）也能被别的客户端发现。
+	go n.bridgePeer(pid)
+}
+
+// bridgePeer 把一台已连接的对端的局域网地址代播到 mDNS 上。
+//
+// 参数:
+//   - pid: peer.ID — 已连接的对端
+//
+// 返回: 无
+//
+// 副作用：可能为本机追加一条 mDNS 代理记录（见 lanmdns.Service.Bridge）。
+// 只代播私网/回环地址，中继（/p2p-circuit）与公网地址一律忽略。
+func (n *Node) bridgePeer(pid peer.ID) {
+	if n.mdns == nil || pid == "" || pid == n.Host.ID() {
+		return
+	}
+	info := peer.AddrInfo{ID: pid}
+	seen := make(map[string]struct{})
+	for _, c := range n.Host.Network().ConnsToPeer(pid) {
+		a := c.RemoteMultiaddr()
+		if _, err := a.ValueForProtocol(ma.P_CIRCUIT); err == nil {
+			continue
+		}
+		if !isLAN(a) {
+			continue
+		}
+		if _, dup := seen[a.String()]; dup {
+			continue
+		}
+		seen[a.String()] = struct{}{}
+		info.Addrs = append(info.Addrs, a)
+	}
+	if len(info.Addrs) == 0 {
+		return
+	}
+	n.mdns.Bridge(info)
 }
 
 func (n *Node) onDisconnected(pid peer.ID) {
@@ -621,6 +734,10 @@ func (n *Node) onDisconnected(pid peer.ID) {
 	}
 	if n.directory {
 		n.Host.ConnManager().Unprotect(pid, "fst")
+	}
+	// 连接彻底断开才撤销代播：对端可能只是换了传输（TCP/QUIC）。
+	if n.mdns != nil {
+		n.mdns.Unbridge(pid)
 	}
 	n.mu.Lock()
 	was := n.online[pid]
@@ -704,7 +821,7 @@ func (n *Node) buildHello(typ string, to peer.ID) *proto.Msg {
 		if n.directory {
 			break // a relay hands out PeerIDs via Directory; its own LAN neighbours mean nothing to remote clients
 		}
-		for _, a := range n.Host.Peerstore().Addrs(pid) {
+		for _, a := range dialableAddrs(n.Host.Peerstore().Addrs(pid)) {
 			if isLAN(a) {
 				m.Peers = append(m.Peers, a.String()+"/p2p/"+pid.String())
 				break // one address per peer is enough for introductions
@@ -784,6 +901,11 @@ func (n *Node) learn(pid peer.ID, h *proto.Msg) {
 		a, err := ma.NewMultiaddr(s)
 		if err != nil || !isLAN(a) {
 			continue // never dial non-LAN addresses supplied by a peer
+		}
+		// 对端广播的回环地址在自己机器上指向本机：拨它只会自连（peer id mismatch），
+		// 移动端在修复 AnnounceIP 之前正是这样把自己的 127.0.0.1 传给了桌面端。
+		if ip, err := manet.ToIP(a); err == nil && (ip.IsLoopback() || ip.IsUnspecified()) {
+			continue
 		}
 		info, err := peer.AddrInfoFromP2pAddr(a)
 		if err != nil || info.ID == n.Host.ID() {
@@ -1007,10 +1129,29 @@ func (n *Node) dial(pi peer.AddrInfo) {
 		}
 		ctx, cancel := context.WithTimeout(n.ctx, 15*time.Second)
 		defer cancel()
-		if err := n.Host.Connect(ctx, pi); err != nil {
-			slog.Debug("dial failed", "peer", pi.ID, "err", err)
+		err := n.Host.Connect(ctx, pi)
+		if err == nil {
+			return
 		}
+		// 拨号失败必须留痕，而且要能看见：设备列表是「收到 HELLO 之后才落库」
+		// （见 learn），所以「mDNS 发现了但对端不出现在界面里」的唯一解释就是
+		// 这一步失败。原来打 Debug，现场日志一片干净，只能靠猜。
+		// 手机与 PC 分属无线/有线时，AP 的客户端隔离会让 TCP 直接不可达，
+		// 这里会把原因（connection refused / i/o timeout / no route）写清楚。
+		slog.Warn("dial failed", "peer", pi.ID, "addrs", addrsOf(pi), "err", err)
 	}()
+}
+
+// addrsOf 把对端地址压成一行，用于日志。
+func addrsOf(pi peer.AddrInfo) string {
+	if len(pi.Addrs) == 0 {
+		return ""
+	}
+	out := make([]string, 0, len(pi.Addrs))
+	for _, a := range pi.Addrs {
+		out = append(out, a.String())
+	}
+	return strings.Join(out, " ")
 }
 
 // fstRelayResources caps how many reservations and concurrent circuits a dedicated relay will take,
@@ -1181,6 +1322,29 @@ func isLAN(a ma.Multiaddr) bool {
 	return manet.IsPrivateAddr(a) || manet.IsIPLoopback(a)
 }
 
+// actualPort 取出宿主实际监听的 TCP 端口，用于 mDNS 的 SRV 记录。
+// 固定端口被占用时 libp2p 会回落到随机端口，此时必须以实际端口广播，
+// 否则移动端按 SRV 直连会连不上。
+//
+// 参数:
+//   - h: host.Host — 已启动的 libp2p 宿主
+//   - fallback: int — 取不到端口时返回的候选值
+//
+// 返回:
+//   - int — 实际 TCP 端口；宿主上没有任何 TCP 地址时返回 fallback
+func actualPort(h host.Host, fallback int) int {
+	for _, a := range h.Addrs() {
+		v, err := a.ValueForProtocol(ma.P_TCP)
+		if err != nil {
+			continue
+		}
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			return p
+		}
+	}
+	return fallback
+}
+
 // lanOnly advertises private/loopback addresses only, so VPN/public interfaces never leak into mDNS.
 func lanOnly(addrs []ma.Multiaddr) []ma.Multiaddr {
 	out := addrs[:0:0]
@@ -1188,6 +1352,81 @@ func lanOnly(addrs []ma.Multiaddr) []ma.Multiaddr {
 		if isLAN(a) {
 			out = append(out, a)
 		}
+	}
+	return out
+}
+
+// addrsFactory 生成 LAN 模式使用的地址过滤器。
+//
+// 功能：先按 isLAN 过滤掉公网/VPN 接口，再在设置了 AnnounceIP 时把 IPv4
+// 地址的主机部分改写为该 IP。之所以放在工厂函数里而不是构造时算一次，
+// 是因为 libp2p 每次取地址（/self、HELLO、identify）都会重新调用它，
+// 这样手机切换 Wi-Fi 后只需 SetAnnounceIP 即可，不必重启节点。
+//
+// 返回:
+//   - func([]ma.Multiaddr) []ma.Multiaddr — libp2p.AddrsFactory 要求的签名
+func (n *Node) addrsFactory() func([]ma.Multiaddr) []ma.Multiaddr {
+	return func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		lan := lanOnly(addrs)
+		ip := n.AnnounceIP()
+		if ip == "" {
+			return lan
+		}
+		return rewriteIP4(lan, ip)
+	}
+}
+
+// rewriteIP4 把每个 IPv4 multiaddr 的主机部分替换为 ip，端口与传输协议保持不变。
+//
+// 参数:
+//   - addrs: []ma.Multiaddr — 待改写的地址（通常来自 libp2p 的监听地址展开）
+//   - ip: string — 本机真实局域网 IPv4
+//
+// 返回:
+//   - []ma.Multiaddr — 改写后的地址；IPv6 与非法条目被丢弃（移动端只拿得到
+//     ::1 之类的回环地址，广播出去反而会让对端连错）
+func rewriteIP4(addrs []ma.Multiaddr, ip string) []ma.Multiaddr {
+	head, err := ma.NewMultiaddr("/ip4/" + ip)
+	if err != nil {
+		return addrs
+	}
+	out := make([]ma.Multiaddr, 0, len(addrs))
+	for _, a := range addrs {
+		first, rest := ma.SplitFirst(a)
+		if first == nil || rest == nil || first.Protocol().Code != ma.P_IP4 {
+			continue
+		}
+		out = append(out, ma.Join(head, rest))
+	}
+	if len(out) == 0 {
+		// 一个 IPv4 监听地址都没有（例如只监听 /ip6）：保留原值，至少不失联。
+		return addrs
+	}
+	return out
+}
+
+// dialableAddrs 去掉对端给出的回环/未指定/链路本地地址。
+//
+// 参数:
+//   - in: []ma.Multiaddr — peerstore 或 HELLO 里的候选地址
+//
+// 返回:
+//   - []ma.Multiaddr — 可拨号的地址；过滤后为空时原样返回，保证同机多实例
+//     联调仍能通过回环直连
+func dialableAddrs(in []ma.Multiaddr) []ma.Multiaddr {
+	out := make([]ma.Multiaddr, 0, len(in))
+	for _, a := range in {
+		ip, err := manet.ToIP(a)
+		if err != nil {
+			continue
+		}
+		if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
+			continue
+		}
+		out = append(out, a)
+	}
+	if len(out) == 0 {
+		return in
 	}
 	return out
 }

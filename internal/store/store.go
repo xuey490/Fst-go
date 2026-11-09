@@ -464,12 +464,15 @@ func encodeAttach(ids []string) string {
 // 返回:
 //   - []string — 解码结果；无附件时为 nil
 func decodeAttach(raw string) []string {
+	// 必须返回空切片而不是 nil：json.Marshal(nil) 会输出 "attach":null，
+	// 而 Kotlin 的 kotlinx.serialization 把 null 当作类型错误直接抛异常，
+	// 导致手机端整段历史消息解码失败、界面永远显示「还没有消息」。
 	if raw == "" {
-		return nil
+		return []string{}
 	}
 	var out []string
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil
+		return []string{}
 	}
 	return out
 }

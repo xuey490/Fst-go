@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  网络安全配置。
+
+  Android 9（API 28）起明文 HTTP 默认被禁用，且 API 37 之前并不存在内建的
+  localhost 豁免。本应用与 Go 核心之间的 IPC 是 http://127.0.0.1:<随机端口>，
+  若不显式放行，每一次请求都会抛：
+
+      java.io.IOException: Cleartext HTTP traffic to 127.0.0.1 not permitted
+
+  于是 /health 永远失败、界面显示「核心健康检查超时」——这是真实踩过的坑。
+
+  这里遵循最小权限：基配置仍禁止明文，只对回环地址开一个口子。对外的网络
+  流量只有 libp2p（Go 侧直接使用 socket，不受该策略约束，且本身就是加密传输），
+  因此不需要放开任何局域网地址。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">::1</domain>
+    </domain-config>
+</network-security-config>

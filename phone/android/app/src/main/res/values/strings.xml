@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FST</string>
+    <string name="notif_channel_name">局域网连接</string>
+    <string name="notif_channel_desc">保持与其他设备的连接与文件传输</string>
+    <string name="notif_running">FST 正在运行</string>
+</resources>
