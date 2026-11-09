@@ -1,0 +1,23 @@
+.task
+bin
+front/dist
+front/node_modules
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+# Mobile generated (per-machine; overlays hold absolute paths)
+build/ios/xcode/overlay.json
+build/ios/xcode/gen/
+build/android/overlay.json
+build/android/gen/
+# phone/ 构建产物与本机配置
+phone/android/app/build/
+phone/android/build/
+phone/android/.gradle/
+phone/android/local.properties
+phone/android/app/src/main/jniLibs/
+phone/build.log
+phone/android/app/libs/
+phone/dist/
+phone/android/.kotlin/
+# 工作区本地数据（编辑器/助手记忆与临时脚本），不进版本库
+.workbuddy/
