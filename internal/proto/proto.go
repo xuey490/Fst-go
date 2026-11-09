@@ -18,8 +18,14 @@ const (
 	MsgProtocol   = "/fst/msg/1.0.0"
 	FileProtocol  = "/fst/file/1.0.0"
 	ProxyProtocol = "/fst/proxy/1.0.0"
-	MDNSService   = "fst"
-	Version       = "0.1.0"
+	// MDNSServiceStandard 是标准 DNS-SD 服务类型，广播名为 "_fst._tcp.local."。
+	// iOS NWBrowser 与 Android NsdManager 只能浏览这种带下划线前缀的合法类型，
+	// 移动端发现依赖它。
+	MDNSServiceStandard = "_fst._tcp"
+	// MDNSService 是历史版本使用的裸标签（广播名 "fst.local."），不符合 DNS-SD 规范。
+	// 仅为让已装机的旧客户端仍能被发现而保留，新代码请使用 MDNSServiceStandard。
+	MDNSService = "fst"
+	Version     = "1.2.0"
 
 	// MaxFrame bounds a single control frame (Hello peer lists and offers stay far below this).
 	MaxFrame = 1 << 20
