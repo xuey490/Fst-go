@@ -47,4 +47,6 @@ fi
 nfpm package --config build/linux/nfpm/nfpm-headless.yaml --packager deb --target dist/
 
 echo "已生成:"
-ls -lh "dist/fst_${VER}_amd64.deb"
+# nfpm 会在版本号后追加 release 号（配置里的 release: "1"），文件名是
+# fst_<版本>-1_amd64.deb，因此这里用通配而不是写死路径。
+ls -lh dist/fst_*_amd64.deb
