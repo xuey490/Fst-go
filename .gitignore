@@ -21,3 +21,5 @@ phone/dist/
 phone/android/.kotlin/
 # 工作区本地数据（编辑器/助手记忆与临时脚本），不进版本库
 .workbuddy/
+# 发布产物（exe/apk/deb 与 zip），由 scripts/ 构建，不进版本库
+dist/

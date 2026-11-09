@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=FST
+Name[zh_CN]=FST 文件传输
+Comment=LAN P2P file transfer and chat (server mode, opens in browser)
+Comment[zh_CN]=局域网 P2P 文件传输与聊天（服务模式，浏览器打开界面）
+Exec=fst serve -addr 127.0.0.1:9797
+Icon=fst
+Terminal=true
+Categories=Network;FileTransfer;Chat;
+Keywords=transfer;chat;p2p;lan;
+StartupNotify=false
