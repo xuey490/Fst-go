@@ -27,6 +27,34 @@ The repository and CLI still use the short name `fst` (for example `fst.exe`, `f
 
 ---
 
+## Screenshots
+
+| Desktop (Windows) | Android |
+| :---: | :---: |
+| <img src="demo/PC/%7B7C48B222-3479-4454-AB9B-941680B6C065%7D.png" width="660" alt="FST desktop — devices page with online, relay and offline groups"> | <img src="demo/phone/d2d2e478996843abc42c55f7ccfabe56.jpg" width="230" alt="FST Android — home screen with four large tiles: devices, chats, transfers, settings"> |
+| **Devices** — online / relay / offline groups, one card per peer with a trust toggle; drag files onto a card to send | **Home** — four entry tiles with live summaries, core status, local identity |
+
+<details>
+<summary><b>More screenshots</b> — 4 desktop (chat / transfers / settings / light theme), 2 Android (devices / settings)</summary>
+
+<br>
+
+| Desktop | Desktop |
+| :---: | :---: |
+| <img src="demo/PC/%7BE13D6724-671F-47A3-B5EE-DABE7440B388%7D.png" width="470" alt="Chat — private and group tabs, rich text composer, images and files, delivery status"> | <img src="demo/PC/%7BB7978CFB-8F35-45AC-AAF5-048FC7852D0D%7D.png" width="470" alt="Transfers — filter by file name, direction and status, resume or retry in bulk"> |
+| **Chat** — private / group tabs, images and files, rich text, delivered status | **Transfers** — filter by name / direction / status, resume and bulk retry |
+| <img src="demo/PC/%7B75EC0BA6-9EFB-4FB7-8008-691D74186FA3%7D.png" width="470" alt="Settings — nickname, avatar, peer ID, listen addresses, download directory, concurrency and rate limit"> | <img src="demo/PC/%7BE353D958-6286-4C33-AE32-902213E6540D%7D.png" width="470" alt="Devices page in the light theme"> |
+| **Settings** — nickname, avatar, peer ID, listen addresses, concurrency, rate limit | **Light theme** — same views, light palette |
+
+| Android | Android |
+| :---: | :---: |
+| <img src="demo/phone/726b5a51d0b8ba23bf73d65d22ec0fc7.jpg" width="230" alt="Android devices page — online and offline groups, offline peers of the same name collapsed to the most recent"> | <img src="demo/phone/c4d229e6cad7795c70845e0694ed86e9.jpg" width="230" alt="Android settings page — avatar, nickname, peer ID, listen addresses, version"> |
+| **Devices** — online / offline split; offline peers sharing a name collapse to the most recent | **Settings** — avatar, nickname, peer ID, addresses, core log |
+
+</details>
+
+---
+
 ## Contents
 
 - [What it solves](#what-it-solves)
